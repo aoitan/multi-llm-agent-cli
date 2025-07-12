@@ -1,57 +1,38 @@
+import { Command } from 'commander';
 import { chatCommand } from './cli/commands/chat';
 import { listModelsCommand } from './cli/commands/model';
 
-function showHelp() {
-  console.log(`
-Usage: multi-llm-agent-cli <command> [options]
+const program = new Command();
 
-Commands:
-  chat <prompt> --model <model_name>  : LLMとチャットします。
-  model list                          : 利用可能なOllamaモデルを一覧表示します。
+program
+  .name('multi-llm-agent-cli')
+  .description('Ollamaを通じて様々なLLMを利用できるコマンドラインツール')
+  .version('1.0.0');
 
-Options:
-  --help                              : ヘルプを表示します。
-`);
+program.command('chat [prompt]')
+  .description('LLMとチャットします。')
+  .option('-m, --model <model_name>', '使用するOllamaモデルを指定します。 (デフォルト: llama2)', 'llama2')
+  .action(async (prompt: string | undefined, options: { model: string }) => {
+    await chatCommand(options.model, prompt);
+  });
+
+program.command('model')
+  .description('Ollamaモデルに関する操作を行います。')
+  .command('list')
+  .description('利用可能なOllamaモデルを一覧表示します。')
+  .action(async () => {
+    await listModelsCommand();
+  });
+
+program.parse(process.argv);
+
+// コマンドが指定されなかった場合や不明なコマンドの場合にヘルプを表示
+if (!process.argv.slice(2).length) {
+  program.outputHelp();
 }
 
-async function main() {
-  const args = process.argv.slice(2);
-  const command = args[0];
-
-  switch (command) {
-    case 'chat':
-      const promptIndex = args.findIndex(arg => !arg.startsWith('--'));
-      const prompt = promptIndex !== -1 ? args[promptIndex] : '';
-      const modelIndex = args.indexOf('--model');
-      const model = modelIndex !== -1 && args[modelIndex + 1] ? args[modelIndex + 1] : 'llama2'; // デフォルトモデル
-
-      if (!prompt) {
-        console.error('エラー: チャットプロンプトを指定してください。');
-        showHelp();
-        process.exit(1);
-      }
-      await chatCommand(model, prompt);
-      break;
-    case 'model':
-      const subCommand = args[1];
-      if (subCommand === 'list') {
-        await listModelsCommand();
-      } else {
-        console.error('エラー: 不明なモデルコマンドです。');
-        showHelp();
-        process.exit(1);
-      }
-      break;
-    case '--help':
-    case '-h':
-    case undefined:
-      showHelp();
-      break;
-    default:
-      console.error(`エラー: 不明なコマンド '${command}' です。`);
-      showHelp();
-      process.exit(1);
-  }
+if (program.args.length > 0 && !program.commands.some(cmd => cmd.name() === program.args[0])) {
+  console.error(`エラー: 不明なコマンド '${program.args[0]}' です。`);
+  program.outputHelp();
+  process.exit(1);
 }
-
-main();
