@@ -1,0 +1,27 @@
+# VSCode
+.vscode/
+
+# Vim
+*.swp
+*.swo
+*.bak
+*.tmp
+*.un~
+Session.vim
+.netrwhist
+
+# TypeScript/NodeJS
+node_modules/
+dist/
+build/
+*.js
+*.map
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env
+.env.local
+.env.*local
+coverage/
+
+local.*.md
