@@ -1,4 +1,0 @@
-feat: OllamaClientテストのエラーハンドリングを修正
-
-- OllamaClient.tsのエラーハンドリングを修正し、AxiosErrorをそのままスローするように変更。
-- OllamaClient.test.tsのテストケースで、AxiosErrorのmessageプロパティを検証するように修正。
