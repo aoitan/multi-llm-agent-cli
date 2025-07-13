@@ -25,5 +25,6 @@ yarn-error.log*
 coverage/
 
 local.*.md
+.git_commit_message.txt
 
 !jest.config.js
