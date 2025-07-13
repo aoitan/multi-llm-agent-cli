@@ -1,32 +1,18 @@
-import { OllamaClient, ChatResponseChunk, Model, Message } from '../../ollama/OllamaClient';
-import fetch from 'node-fetch';
+import { OllamaClient, ChatResponseChunk, Model, Message } from '@ollama/OllamaClient';
+import axios, { AxiosError } from 'axios';
 
-// node-fetchをモック化
-jest.mock('node-fetch', () => jest.fn());
+// axiosをモック化
+jest.mock('axios', () => ({
+  __esModule: true, // ES Moduleとして扱う
+  default: {
+    post: jest.fn(),
+    get: jest.fn(),
+    isAxiosError: jest.fn((payload): payload is AxiosError => payload instanceof AxiosError),
+  },
+  AxiosError: jest.requireActual('axios').AxiosError, // AxiosErrorクラスを実際のモジュールから取得
+}));
 
-const mockFetch = fetch as jest.MockedFunction<typeof fetch>;
-
-// ReadableStreamのモック（テスト環境によっては必要）
-class MockReadableStream {
-  private chunks: Uint8Array[];
-  private index: number;
-
-  constructor(chunks: Uint8Array[]) {
-    this.chunks = chunks;
-    this.index = 0;
-  }
-
-  getReader() {
-    return {
-      read: async () => {
-        if (this.index < this.chunks.length) {
-          return { done: false, value: this.chunks[this.index++] };
-        }
-        return { done: true, value: undefined };
-      },
-    };
-  }
-}
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
 describe('OllamaClient', () => {
   let client: OllamaClient;
@@ -34,7 +20,8 @@ describe('OllamaClient', () => {
 
   beforeEach(() => {
     client = new OllamaClient(baseUrl);
-    mockFetch.mockClear();
+    mockedAxios.post.mockClear();
+    mockedAxios.get.mockClear();
   });
 
   describe('chat', () => {
@@ -45,15 +32,21 @@ describe('OllamaClient', () => {
         { model: 'test-model', created_at: '', done: true, total_duration: 1000 },
       ];
 
-      const mockResponseStream = new MockReadableStream(
-        mockChunks.map(chunk => new TextEncoder().encode(JSON.stringify(chunk) + '\n'))
-      );
+      // ストリームのモック
+      const mockStream = new (require('stream').Readable)({
+        read() {
+          mockChunks.forEach(chunk => {
+            this.push(JSON.stringify(chunk) + '\n');
+          });
+          this.push(null);
+        }
+      });
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        body: mockResponseStream,
-      } as any);
+        data: mockStream,
+        headers: { 'content-type': 'application/json' },
+      });
 
       const messages: Message[] = [{ role: 'user', content: 'Hi' }];
       const receivedChunks: ChatResponseChunk[] = [];
@@ -61,12 +54,12 @@ describe('OllamaClient', () => {
         receivedChunks.push(chunk);
       }
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(mockedAxios.post).toHaveBeenCalledWith(
         `${baseUrl}/api/chat`,
+        { model: 'test-model', messages, stream: true },
         expect.objectContaining({
-          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'test-model', messages, stream: true }),
+          responseType: 'stream',
         })
       );
       expect(receivedChunks).toEqual(mockChunks);
@@ -77,11 +70,11 @@ describe('OllamaClient', () => {
         model: 'test-model', created_at: '', message: { role: 'assistant', content: 'Hello World' }, done: true,
       };
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
+      mockedAxios.post.mockResolvedValueOnce({
         status: 200,
-        json: () => Promise.resolve(mockResponse),
-      } as any);
+        data: mockResponse,
+        headers: { 'content-type': 'application/json' },
+      });
 
       const messages: Message[] = [{ role: 'user', content: 'Hi' }];
       const receivedChunks: ChatResponseChunk[] = [];
@@ -89,30 +82,43 @@ describe('OllamaClient', () => {
         receivedChunks.push(chunk);
       }
 
-      expect(mockFetch).toHaveBeenCalledWith(
+      expect(mockedAxios.post).toHaveBeenCalledWith(
         `${baseUrl}/api/chat`,
+        { model: 'test-model', messages, stream: false },
         expect.objectContaining({
-          method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ model: 'test-model', messages, stream: false }),
+          responseType: 'json',
         })
       );
       expect(receivedChunks).toEqual([mockResponse]);
     });
 
     it('should throw an error for non-ok responses', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 500,
-        text: () => Promise.resolve('Internal Server Error'),
-      } as any);
+      mockedAxios.post.mockRejectedValueOnce(new AxiosError(
+        'Request failed with status code 500',
+        'ERR_BAD_REQUEST',
+        { headers: {} as any }, // config
+        {} as any, // request (any型で一時的に回避)
+        { // response
+          status: 500,
+          statusText: 'Internal Server Error',
+          data: 'Internal Server Error',
+          headers: {},
+          config: { headers: {} as any },
+        } as any // response (any型で一時的に回避)
+      ));
 
       const messages: Message[] = [{ role: 'user', content: 'Hi' }];
-      await expect(async () => {
+      let thrownError: any;
+      try {
         for await (const chunk of client.chat('test-model', messages)) {
           // do nothing
         }
-      }).rejects.toThrow('Ollama API error: 500 - Internal Server Error');
+      } catch (e) {
+        thrownError = e;
+      }
+      expect(thrownError).toBeInstanceOf(AxiosError);
+      expect(thrownError.message).toContain('Request failed with status code 500');
     });
   });
 
@@ -123,26 +129,41 @@ describe('OllamaClient', () => {
         { name: 'codellama', modified_at: '', size: 200, digest: '', details: {} as any },
       ];
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
+      mockedAxios.get.mockResolvedValueOnce({
         status: 200,
-        json: () => Promise.resolve({ models: mockModels }),
-      } as any);
+        data: { models: mockModels },
+        headers: { 'content-type': 'application/json' },
+      });
 
       const models = await client.getModels();
 
-      expect(mockFetch).toHaveBeenCalledWith(`${baseUrl}/api/tags`);
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${baseUrl}/api/tags`);
       expect(models).toEqual(mockModels);
     });
 
     it('should throw an error for non-ok responses', async () => {
-      mockFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        text: () => Promise.resolve('Not Found'),
-      } as any);
+      mockedAxios.get.mockRejectedValueOnce(new AxiosError(
+        'Request failed with status code 404',
+        'ERR_BAD_REQUEST',
+        { headers: {} as any }, // config
+        {} as any, // request (any型で一時的に回避)
+        { // response
+          status: 404,
+          statusText: 'Not Found',
+          data: 'Not Found',
+          headers: {},
+          config: { headers: {} as any },
+        } as any // response (any型で一時的に回避)
+      ));
 
-      await expect(client.getModels()).rejects.toThrow('Ollama API error: 404 - Not Found');
+      let thrownError: any;
+      try {
+        await client.getModels();
+      } catch (e) {
+        thrownError = e;
+      }
+      expect(thrownError).toBeInstanceOf(AxiosError);
+      expect(thrownError.message).toContain('Request failed with status code 404');
     });
   });
 });

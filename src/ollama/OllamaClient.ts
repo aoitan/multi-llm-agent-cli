@@ -1,4 +1,4 @@
-import fetch, { Response } from 'node-fetch';
+import axios from 'axios';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -54,38 +54,32 @@ export class OllamaClient {
     const body: ChatRequest = { model, messages, stream };
 
     try {
-      const response: Response = await fetch(url, {
-        method: 'POST',
+      const response = await axios.post<ChatResponseChunk>(url, body, {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(body),
+        responseType: stream ? 'stream' : 'json',
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama API error: ${response.status} - ${errorText}`);
+      if (response.status !== 200) {
+        throw new Error(`Ollama API error: ${response.status} - ${response.statusText}`);
       }
 
-      if (stream && response.body) {
-        // response.bodyをReadableStreamとして型アサーション
-        const reader = (response.body as unknown as ReadableStream).getReader();
+      if (stream && response.data) {
+        const readableStream = response.data as unknown as NodeJS.ReadableStream;
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
+        for await (const chunk of readableStream) {
+          buffer += decoder.decode(chunk as Uint8Array, { stream: true });
           const lines = buffer.split('\n');
           buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
           for (const line of lines) {
             if (line.trim() === '') continue;
             try {
-              const chunk: ChatResponseChunk = JSON.parse(line);
-              yield chunk;
+              const parsedChunk: ChatResponseChunk = JSON.parse(line);
+              yield parsedChunk;
             } catch (e) {
               console.error('Failed to parse JSON chunk:', line, e);
             }
@@ -93,35 +87,38 @@ export class OllamaClient {
         }
         if (buffer.trim() !== '') {
           try {
-            const chunk: ChatResponseChunk = JSON.parse(buffer);
-            yield chunk;
+            const parsedChunk: ChatResponseChunk = JSON.parse(buffer);
+            yield parsedChunk;
           } catch (e) {
             console.error('Failed to parse final JSON chunk:', buffer, e);
           }
         }
       } else {
-        const jsonResponse: ChatResponseChunk = (await response.json()) as ChatResponseChunk; // 型キャスト
-        yield jsonResponse;
+        yield response.data;
       }
     } catch (error) {
       console.error('Error during chat API call:', error);
-      throw error;
+      if (axios.isAxiosError(error) && error.response) {
+        // throw new Error(`Ollama API error: ${error.response.status} - ${error.response.statusText}`); // この行を削除
+      }
+      throw error; // 元のAxiosErrorをスロー
     }
   }
 
   public async getModels(): Promise<Model[]> {
     const url = `${this.baseUrl}/api/tags`;
     try {
-      const response: Response = await fetch(url); // Response型を明示
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama API error: ${response.status} - ${errorText}`);
+      const response = await axios.get<{ models: Model[] }>(url);
+      if (response.status !== 200) {
+        throw new Error(`Ollama API error: ${response.status} - ${response.statusText}`);
       }
-      const data: { models: Model[] } = (await response.json()) as { models: Model[] }; // 型キャスト
-      return data.models;
+      return response.data.models;
     } catch (error) {
       console.error('Error during getModels API call:', error);
-      throw error;
+      if (axios.isAxiosError(error) && error.response) {
+        // throw new Error(`Ollama API error: ${error.response.status} - ${error.response.statusText}`); // この行を削除
+      }
+      throw error; // 元のAxiosErrorをスロー
     }
   }
 }
