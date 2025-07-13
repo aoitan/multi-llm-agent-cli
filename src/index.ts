@@ -25,14 +25,3 @@ program.command('model')
   });
 
 program.parse(process.argv);
-
-// コマンドが指定されなかった場合や不明なコマンドの場合にヘルプを表示
-if (!process.argv.slice(2).length) {
-  program.outputHelp();
-}
-
-if (program.args.length > 0 && !program.commands.some(cmd => cmd.name() === program.args[0])) {
-  console.error(`エラー: 不明なコマンド '${program.args[0]}' です。`);
-  program.outputHelp();
-  process.exit(1);
-}
