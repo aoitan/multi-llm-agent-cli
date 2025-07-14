@@ -1,4 +1,5 @@
 import { OllamaClient, Model } from '../../ollama/OllamaClient';
+import { setConfig, getConfig } from '../../config';
 
 export async function listModelsCommand() {
   const client = new OllamaClient();
@@ -17,6 +18,20 @@ export async function listModelsCommand() {
   }
 }
 
-// モデル選択機能は、現状ではCLIの引数で直接指定する形を想定しているため、
-// ここでは具体的な 'use' コマンドの実装は行いません。
-// 将来的に設定ファイルなどでの永続化が必要になった際に実装を検討します。
+export async function useModelCommand(modelName: string) {
+  const client = new OllamaClient();
+  try {
+    const models = await client.getModels();
+    const modelExists = models.some(model => model.name === modelName);
+
+    if (!modelExists) {
+      console.error(`エラー: モデル '${modelName}' はOllamaに存在しません。`);
+      return;
+    }
+
+    setConfig({ defaultModel: modelName });
+    console.log(`デフォルトモデルを '${modelName}' に設定しました。`);
+  } catch (error) {
+    console.error('デフォルトモデルの設定中にエラーが発生しました:', error);
+  }
+}
