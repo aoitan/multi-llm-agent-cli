@@ -1,5 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { OllamaClient, Message } from '../ollama/OllamaClient';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -31,6 +34,8 @@ interface Task {
 // ツール関数の型定義
 type ToolFunction = (...args: any[]) => Promise<any>;
 
+const PLUGIN_DIR = path.join(os.homedir(), '.multi-llm-agent-cli', 'plugins');
+
 export class McpServer {
   private wss: WebSocketServer;
   private orchestratorLLM: OllamaClient;
@@ -53,6 +58,8 @@ export class McpServer {
         return `計算エラー: ${e.message}`;
       }
     });
+
+    this.loadPlugins(); // プラグインをロード
 
     console.log(`MCP Server started on ws://localhost:${port}`);
 
@@ -88,6 +95,31 @@ export class McpServer {
       throw new Error(`Tool not found: ${toolName}`);
     }
     return tool(...args);
+  }
+
+  private loadPlugins() {
+    if (!fs.existsSync(PLUGIN_DIR)) {
+      fs.mkdirSync(PLUGIN_DIR, { recursive: true });
+      console.log(`Plugin directory created: ${PLUGIN_DIR}`);
+      return;
+    }
+
+    const pluginFiles = fs.readdirSync(PLUGIN_DIR).filter(file => file.endsWith('.js'));
+
+    for (const file of pluginFiles) {
+      const pluginPath = path.join(PLUGIN_DIR, file);
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const plugin = require(pluginPath);
+        if (plugin.name && typeof plugin.handler === 'function') {
+          this.registerTool(plugin.name, plugin.handler);
+        } else {
+          console.warn(`Invalid plugin format: ${file}. Must export 'name' and 'handler' function.`);
+        }
+      } catch (e) {
+        console.error(`Failed to load plugin ${file}:`, e);
+      }
+    }
   }
 
   private async handleMessage(ws: WebSocket, message: string) {
