@@ -1,6 +1,7 @@
 import { Command } from 'commander';
 import { chatCommand } from './cli/commands/chat';
 import { listModelsCommand, useModelCommand } from './cli/commands/model';
+import { addEndpointCommand, removeEndpointCommand, useEndpointCommand, listEndpointsCommand } from './cli/commands/endpoint';
 import { getConfig } from './config';
 
 const program = new Command();
@@ -30,6 +31,33 @@ modelCommand.command('use <model_name>')
   .description('デフォルトで使用するOllamaモデルを設定します。')
   .action(async (modelName: string) => {
     await useModelCommand(modelName);
+  });
+
+const endpointCommand = program.command('endpoint')
+  .description('Ollamaエンドポイントに関する操作を行います。');
+
+endpointCommand.command('add <name> <url>')
+  .description('新しいOllamaエンドポイントを登録します。')
+  .action(async (name: string, url: string) => {
+    await addEndpointCommand(name, url);
+  });
+
+endpointCommand.command('remove <name>')
+  .description('登録済みのOllamaエンドポイントを削除します。')
+  .action(async (name: string) => {
+    await removeEndpointCommand(name);
+  });
+
+endpointCommand.command('use <name>')
+  .description('デフォルトで使用するOllamaエンドポイントを切り替えます。')
+  .action(async (name: string) => {
+    await useEndpointCommand(name);
+  });
+
+endpointCommand.command('list')
+  .description('登録済みのOllamaエンドポイントを一覧表示します。')
+  .action(async () => {
+    await listEndpointsCommand();
   });
 
 program.parse(process.argv);

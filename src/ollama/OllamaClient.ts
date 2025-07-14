@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { getCurrentEndpoint, listEndpoints, Endpoint } from '../config';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -43,14 +44,30 @@ export interface Model {
 }
 
 export class OllamaClient {
-  private baseUrl: string;
+  private endpoints: Endpoint[];
+  private currentEndpointIndex: number;
 
-  constructor(baseUrl: string = 'http://localhost:11434') {
-    this.baseUrl = baseUrl;
+  constructor() {
+    this.endpoints = listEndpoints();
+    const currentEndpointName = getCurrentEndpoint().name;
+    this.currentEndpointIndex = this.endpoints.findIndex(ep => ep.name === currentEndpointName);
+    if (this.currentEndpointIndex === -1) {
+      this.currentEndpointIndex = 0; // Fallback to first endpoint if current is not found
+    }
+  }
+
+  private getNextEndpoint(): string {
+    if (this.endpoints.length === 0) {
+      throw new Error('No Ollama endpoints configured.');
+    }
+    const endpoint = this.endpoints[this.currentEndpointIndex].url;
+    this.currentEndpointIndex = (this.currentEndpointIndex + 1) % this.endpoints.length;
+    return endpoint;
   }
 
   public async *chat(model: string, messages: Message[], stream: boolean = true): AsyncGenerator<ChatResponseChunk> {
-    const url = `${this.baseUrl}/api/chat`;
+    const baseUrl = this.getNextEndpoint();
+    const url = `${baseUrl}/api/chat`;
     const body: ChatRequest = { model, messages, stream };
 
     try {
@@ -106,7 +123,8 @@ export class OllamaClient {
   }
 
   public async getModels(): Promise<Model[]> {
-    const url = `${this.baseUrl}/api/tags`;
+    const baseUrl = this.getNextEndpoint(); // Use round-robin for model listing as well
+    const url = `${baseUrl}/api/tags`;
     try {
       const response = await axios.get<{ models: Model[] }>(url);
       if (response.status !== 200) {
