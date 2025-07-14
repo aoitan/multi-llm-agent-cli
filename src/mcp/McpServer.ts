@@ -1,4 +1,5 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import { OllamaClient, Message } from '../ollama/OllamaClient';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -20,9 +21,14 @@ interface JsonRpcResponse {
 
 export class McpServer {
   private wss: WebSocketServer;
+  private orchestratorLLM: OllamaClient;
+  private workerLLM: OllamaClient;
 
   constructor(port: number = 8080) {
     this.wss = new WebSocketServer({ port });
+    this.orchestratorLLM = new OllamaClient(); // 指示者LLM
+    this.workerLLM = new OllamaClient();     // 作業者LLM
+
     console.log(`MCP Server started on ws://localhost:${port}`);
 
     this.wss.on('connection', ws => {
@@ -67,6 +73,11 @@ export class McpServer {
           result = { roots: [] }; // No roots for now
           this.sendResponse(ws, request.id, result);
           break;
+        case 'orchestrate/task': // 新しいメソッド: オーケストレーションタスクの開始
+          const userPrompt = request.params.prompt;
+          const orchestratorResponse = await this.runOrchestration(userPrompt);
+          this.sendResponse(ws, request.id, { response: orchestratorResponse });
+          break;
         default:
           this.sendError(ws, request.id, -32601, `Method not found: ${request.method}`);
           break;
@@ -75,6 +86,42 @@ export class McpServer {
       console.error('Error parsing message or handling request:', error);
       this.sendError(ws, null, -32700, 'Parse error');
     }
+  }
+
+  private async runOrchestration(userPrompt: string): Promise<string> {
+    // Step 1: Orchestrator LLM processes the user prompt
+    const orchestratorMessages: Message[] = [{ role: 'user', content: `ユーザーの要求をタスクに分解し、作業者LLMに指示してください: ${userPrompt}` }];
+    let orchestratorOutput = '';
+    for await (const chunk of this.orchestratorLLM.chat('llama2', orchestratorMessages)) { // モデル名は仮
+      if (chunk.message?.content) {
+        orchestratorOutput += chunk.message.content;
+      }
+    }
+    console.log('Orchestrator LLM Output:', orchestratorOutput);
+
+    // Step 2: Simulate task assignment to Worker LLM
+    const workerMessages: Message[] = [{ role: 'user', content: `指示者からのタスク: ${orchestratorOutput}` }];
+    let workerOutput = '';
+    for await (const chunk of this.workerLLM.chat('llama2', workerMessages)) { // モデル名は仮
+      if (chunk.message?.content) {
+        workerOutput += chunk.message.content;
+      }
+    }
+    console.log('Worker LLM Output:', workerOutput);
+
+    // Step 3: Orchestrator LLM synthesizes the final response
+    const finalMessages: Message[] = [
+      { role: 'user', content: `ユーザーの要求: ${userPrompt}` },
+      { role: 'assistant', content: `作業者LLMの実行結果: ${workerOutput}` },
+      { role: 'user', content: 'この結果に基づいて、ユーザーへの最終的な応答を生成してください。' }
+    ];
+    let finalResponse = '';
+    for await (const chunk of this.orchestratorLLM.chat('llama2', finalMessages)) { // モデル名は仮
+      if (chunk.message?.content) {
+        finalResponse += chunk.message.content;
+      }
+    }
+    return finalResponse;
   }
 
   private sendResponse(ws: WebSocket, id: string | number, result: any) {
