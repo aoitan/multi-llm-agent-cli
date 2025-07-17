@@ -110,71 +110,71 @@ interface ModelsResponse {
 
 ## 9. シーケンス図
 
-```plantuml
-@startuml
-actor User
-participant CLI as "CLI Application"
-participant OllamaClient as "OllamaClient"
-participant OllamaAPI as "Ollama API Server"
+```mermaid
+sequenceDiagram
+    actor User
+    participant CLI as CLI Application
+    participant OllamaClient as OllamaClient
+    participant OllamaAPI as Ollama API Server
 
-User -> CLI: chat "Hello" --model llama2
-CLI -> OllamaClient: chat(model: "llama2", message: "Hello")
-OllamaClient -> OllamaAPI: POST /api/chat (request body)
-OllamaAPI --> OllamaClient: Streaming Response (chunk 1)
-OllamaClient --> CLI: Streamed Message (chunk 1)
-OllamaAPI --> OllamaClient: Streaming Response (chunk 2)
-OllamaClient --> CLI: Streamed Message (chunk 2)
-...
-OllamaAPI --> OllamaClient: Streaming Response (final chunk, done: true)
-OllamaClient --> CLI: Streamed Message (final chunk)
-CLI --> User: Display LLM Response
+    User->>CLI: chat "Hello" --model llama2
+    CLI->>OllamaClient: chat(model: "llama2", message: "Hello")
+    OllamaClient->>OllamaAPI: POST /api/chat (request body)
+    OllamaAPI-->>OllamaClient: Streaming Response (chunk 1)
+    OllamaClient-->>CLI: Streamed Message (chunk 1)
+    OllamaAPI-->>OllamaClient: Streaming Response (chunk 2)
+    OllamaClient-->>CLI: Streamed Message (chunk 2)
+    ...
+    OllamaAPI-->>OllamaClient: Streaming Response (final chunk, done: true)
+    OllamaClient-->>CLI: Streamed Message (final chunk)
+    CLI-->>User: Display LLM Response
 
-User -> CLI: model list
-CLI -> OllamaClient: getModels()
-OllamaClient -> OllamaAPI: GET /api/tags
-OllamaAPI --> OllamaClient: Models Response (JSON)
-OllamaClient --> CLI: Parsed Model List
-CLI --> User: Display Model List
-@enduml
+    User->>CLI: model list
+    CLI->>OllamaClient: getModels()
+    OllamaClient->>OllamaAPI: GET /api/tags
+    OllamaAPI-->>OllamaClient: Models Response (JSON)
+    OllamaClient-->>CLI: Parsed Model List
+    CLI-->>User: Display Model List
+```
 ```
 
 ## 10. クラス図 (OllamaClient)
 
-```plantuml
-@startuml
-class OllamaClient {
-  -baseUrl: string
-  +constructor(baseUrl: string)
-  +chat(model: string, messages: Message[], stream: boolean): AsyncGenerator<ChatResponseChunk>
-  +getModels(): Promise<Model[]>
-  -request<T>(method: string, path: string, body?: any): Promise<T>
-}
+```mermaid
+classDiagram
+    class OllamaClient {
+        -baseUrl: string
+        +constructor(baseUrl: string)
+        +chat(model: string, messages: Message[], stream: boolean): AsyncGenerator<ChatResponseChunk>
+        +getModels(): Promise<Model[]>
+        -request<T>(method: string, path: string, body?: any): Promise<T>
+    }
 
-interface Message {
-  role: "user" | "assistant" | "system"
-  content: string
-}
+    class Message {
+        role: "user" | "assistant" | "system"
+        content: string
+    }
 
-interface ChatResponseChunk {
-  model: string
-  created_at: string
-  message?: { role: "assistant"; content: string }
-  done: boolean
-}
+    class ChatResponseChunk {
+        model: string
+        created_at: string
+        message?: { role: "assistant"; content: string }
+        done: boolean
+    }
 
-interface Model {
-  name: string
-  modified_at: string
-  size: number
-  digest: string
-  details: {
-    parent_model: string
-    format: string
-    family: string
-    families: string[]
-    parameter_size: string
-    quantization_level: string
-  }
-}
-@enduml
+    class Model {
+        name: string
+        modified_at: string
+        size: number
+        digest: string
+        details: {
+            parent_model: string
+            format: string
+            family: string
+            families: string[]
+            parameter_size: string
+            quantization_level: string
+        }
+    }
+```
 ```

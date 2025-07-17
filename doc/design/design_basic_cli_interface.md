@@ -48,35 +48,35 @@ CLIフレームワークとして `commander.js` を採用する。シンプル�
 
 ### シーケンス図 (対話モード)
 
-```plantuml
-@startuml
-actor User
-participant CLI as "CLI Application"
-participant Readline as "Node.js Readline"
-participant ChatCommand as "chatCommand"
-participant OllamaClient as "OllamaClient"
-participant OllamaAPI as "Ollama API Server"
+```mermaid
+sequenceDiagram
+    actor User
+    participant CLI as CLI Application
+    participant Readline as Node.js Readline
+    participant ChatCommand as chatCommand
+    participant OllamaClient as OllamaClient
+    participant OllamaAPI as Ollama API Server
 
-User -> CLI: chat
-CLI -> Readline: prompt for input
-loop until /exit or /quit
-    User -> Readline: user input (e.g., "Hello")
-    Readline -> CLI: input string
-    CLI -> ChatCommand: handleInput(input)
-    ChatCommand -> OllamaClient: chat(model, messages)
-    OllamaClient -> OllamaAPI: POST /api/chat
-    OllamaAPI --> OllamaClient: Streaming Response
-    OllamaClient --> ChatCommand: Streamed Chunks
-    ChatCommand -> CLI: Display Chunks
-    CLI --> User: Display LLM Response
-    alt User enters /exit or /quit
-        User -> Readline: /exit
-        Readline -> CLI: /exit
-        CLI -> CLI: Exit loop
+    User->>CLI: chat
+    CLI->>Readline: prompt for input
+    loop until /exit or /quit
+        User->>Readline: user input (e.g., "Hello")
+        Readline->>CLI: input string
+        CLI->>ChatCommand: handleInput(input)
+        ChatCommand->>OllamaClient: chat(model, messages)
+        OllamaClient->>OllamaAPI: POST /api/chat
+        OllamaAPI-->>OllamaClient: Streaming Response
+        OllamaClient-->>ChatCommand: Streamed Chunks
+        ChatCommand->>CLI: Display Chunks
+        CLI-->>User: Display LLM Response
+        alt User enters /exit or /quit
+            User->>Readline: /exit
+            Readline->>CLI: /exit
+            CLI->>CLI: Exit loop
+        end
     end
-end
-CLI --> User: Exit message
-@enduml
+    CLI-->>User: Exit message
+```
 ```
 
 ## 6. LLM応答の整形と表示の設計
