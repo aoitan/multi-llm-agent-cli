@@ -77,7 +77,6 @@ sequenceDiagram
     end
     CLI-->>User: Exit message
 ```
-```
 
 ## 6. LLM応答の整形と表示の設計
 
