@@ -124,7 +124,9 @@ sequenceDiagram
     OllamaClient-->>CLI: Streamed Message (chunk 1)
     OllamaAPI-->>OllamaClient: Streaming Response (chunk 2)
     OllamaClient-->>CLI: Streamed Message (chunk 2)
-    ...
+
+    Note over OllamaAPI,OllamaClient: 中略（chunk 3〜N）
+
     OllamaAPI-->>OllamaClient: Streaming Response (final chunk, done: true)
     OllamaClient-->>CLI: Streamed Message (final chunk)
     CLI-->>User: Display LLM Response
@@ -135,6 +137,7 @@ sequenceDiagram
     OllamaAPI-->>OllamaClient: Models Response (JSON)
     OllamaClient-->>CLI: Parsed Model List
     CLI-->>User: Display Model List
+
 ```
 
 ## 10. クラス図 (OllamaClient)
@@ -157,23 +160,31 @@ classDiagram
     class ChatResponseChunk {
         model: string
         created_at: string
-        message?: { role: "assistant"; content: string }
+        message?: Message
         done: boolean
     }
+
+    %% 注釈:
+    %% message はオプション（nullable）
+    %% 例: { role: "assistant", content: "..." }
 
     class Model {
         name: string
         modified_at: string
         size: number
         digest: string
-        details: {
-            parent_model: string
-            format: string
-            family: string
-            families: string[]
-            parameter_size: string
-            quantization_level: string
-        }
+        details: Details
     }
-```
+
+    class Details {
+        parent_model: string
+        format: string
+        family: string
+        families: string[]
+        parameter_size: string
+        quantization_level: string
+    }
+
+    ChatResponseChunk --> Message
+    Model --> Details
 ```
