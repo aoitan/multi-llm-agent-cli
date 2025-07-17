@@ -136,7 +136,6 @@ sequenceDiagram
     OllamaClient-->>CLI: Parsed Model List
     CLI-->>User: Display Model List
 ```
-```
 
 ## 10. クラス図 (OllamaClient)
 
