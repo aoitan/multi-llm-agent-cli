@@ -22,10 +22,11 @@ jest.mock('../../config', () => ({
 
 describe('OllamaClient', () => {
   let client: OllamaClient;
-  const baseUrl = 'http://localhost:11434'; // モックされたエンドポイントのURL
+  let baseUrl: string;
 
   beforeEach(() => {
     client = new OllamaClient(); // 引数なしで初期化
+    baseUrl = require('../../config').getCurrentEndpoint().url; // モックされたエンドポイントのURLを取得
     mockedAxios.post.mockClear();
     mockedAxios.get.mockClear();
   });
