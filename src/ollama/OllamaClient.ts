@@ -86,12 +86,8 @@ export class OllamaClient {
   }
 
   private handleAxiosError(error: AxiosError, baseUrl: string): never {
-    if (axios.isAxiosError(error)) {
-      const errorMessage = getErrorMessageFromAxiosError(error);
-      throw new Error(errorMessage);
-    } else {
-      throw error; // その他のエラー
-    }
+    const errorMessage = getErrorMessageFromAxiosError(error);
+    throw new Error(errorMessage);
   }
 
   public async *chat(model: string, messages: Message[], stream: boolean = true): AsyncGenerator<ChatResponseChunk> {
