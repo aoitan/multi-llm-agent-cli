@@ -72,7 +72,7 @@ export class OllamaClient {
       } else if (error.code === 'ETIMEDOUT') {
         throw new Error(`Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`);
       } else if (error.response) {
-        throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${JSON.stringify(error.response.data)}`);
+        throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data ? error.response.data.message : '(no details)'}`);
       } else {
         throw new Error(`ネットワークエラー: ${error.message}`);
       }
