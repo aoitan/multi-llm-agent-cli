@@ -83,6 +83,7 @@ export class McpClient {
       const response: JsonRpcResponse = JSON.parse(message);
 
       if (response.id !== undefined && response.id !== null) {
+        // This is a response to a request
         const pending = this.pendingRequests.get(response.id as number);
         if (pending) {
           if (response.error) {
@@ -92,9 +93,13 @@ export class McpClient {
           }
           this.pendingRequests.delete(response.id as number);
         }
-      } else if (response.method) { // This is a notification
-        console.log(`Received notification: ${response.method} with params:`, response.params);
-        // Handle notifications here (e.g., 'initialized', 'notifications/roots/list_changed')
+      } else {
+        // This might be a notification (a request without an id)
+        const notification = response as JsonRpcRequest;
+        if (notification.method) {
+          console.log(`Received notification: ${notification.method} with params:`, notification.params);
+          // Handle notifications here (e.g., 'initialized', 'notifications/roots/list_changed')
+        }
       }
     } catch (error) {
       console.error('Error parsing message:', error);
