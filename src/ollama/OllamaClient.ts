@@ -1,5 +1,6 @@
 import axios, { AxiosError } from 'axios';
 import { getCurrentEndpoint, listEndpoints, Endpoint } from '../config';
+import { logger } from '../utils/logger';
 
 export interface Message {
   role: 'user' | 'assistant' | 'system';
@@ -65,17 +66,22 @@ export class OllamaClient {
     return endpoint;
   }
 
-  private _handleAxiosError(error: unknown, baseUrl: string): never {
+  private _handleAxiosError(error: AxiosError, baseUrl: string): never {
     if (axios.isAxiosError(error)) {
+      let errorMessage: string;
       if (error.code === 'ECONNREFUSED') {
-        throw new Error(`Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`);
+        errorMessage = `Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`;
       } else if (error.code === 'ETIMEDOUT') {
-        throw new Error(`Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`);
+        errorMessage = `Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`;
       } else if (error.response) {
-        throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data ? error.response.data.message : '(no details)'}`);
+        const details = typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data 
+          ? error.response.data.message 
+          : '(no details)';
+        errorMessage = `Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${details}`;
       } else {
-        throw new Error(`ネットワークエラー: ${error.message}`);
+        errorMessage = `ネットワークエラー: ${error.message}`;
       }
+      throw new Error(errorMessage);
     } else {
       throw error; // その他のエラー
     }
@@ -114,7 +120,7 @@ export class OllamaClient {
               const parsedChunk: ChatResponseChunk = JSON.parse(line);
               yield parsedChunk;
             } catch (e) {
-              console.error('Failed to parse JSON chunk:', line, e);
+              logger.error('Failed to parse JSON chunk:', line, e);
             }
           }
         }
@@ -123,14 +129,14 @@ export class OllamaClient {
             const parsedChunk: ChatResponseChunk = JSON.parse(buffer);
             yield parsedChunk;
           } catch (e) {
-            console.error('Failed to parse final JSON chunk:', buffer, e);
+            logger.error('Failed to parse final JSON chunk:', buffer, e);
           }
         }
       } else {
         yield response.data;
       }
     } catch (error) {
-      this._handleAxiosError(error, baseUrl);
+      this._handleAxiosError(error as AxiosError, baseUrl);
     }
   }
 
@@ -144,7 +150,7 @@ export class OllamaClient {
       }
       return response.data.models;
     } catch (error) {
-      this._handleAxiosError(error, baseUrl);
+      this._handleAxiosError(error as AxiosError, baseUrl);
     }
   }
 }
