@@ -2,6 +2,21 @@ import axios, { AxiosError } from 'axios';
 import { getCurrentEndpoint, listEndpoints, Endpoint } from '../config';
 import { logger } from '../utils/logger';
 
+function getErrorMessageFromAxiosError(error: AxiosError): string {
+  if (error.response) {
+    const details = typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data
+      ? (error.response.data as any).message
+      : '(no details)';
+    return `Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${details}`;
+  } else if (error.code === 'ECONNREFUSED') {
+    return `Ollamaサーバーに接続できません。Ollamaが実行中か確認してください。`;
+  } else if (error.code === 'ETIMEDOUT') {
+    return `Ollamaサーバーへの接続がタイムアウトしました。Ollamaが応答しているか確認してください。`;
+  } else {
+    return `ネットワークエラー: ${error.message}`;
+  }
+}
+
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -68,19 +83,7 @@ export class OllamaClient {
 
   private handleAxiosError(error: AxiosError, baseUrl: string): never {
     if (axios.isAxiosError(error)) {
-      let errorMessage: string;
-      if (error.code === 'ECONNREFUSED') {
-        errorMessage = `Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`;
-      } else if (error.code === 'ETIMEDOUT') {
-        errorMessage = `Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`;
-      } else if (error.response) {
-        const details = typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data 
-          ? (error.response.data as any).message 
-          : '(no details)';
-        errorMessage = `Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${details}`;
-      } else {
-        errorMessage = `ネットワークエラー: ${error.message}`;
-      }
+      const errorMessage = getErrorMessageFromAxiosError(error);
       throw new Error(errorMessage);
     } else {
       throw error; // その他のエラー
