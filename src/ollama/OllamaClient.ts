@@ -66,7 +66,7 @@ export class OllamaClient {
     return endpoint;
   }
 
-  private _handleAxiosError(error: AxiosError, baseUrl: string): never {
+  private handleAxiosError(error: AxiosError, baseUrl: string): never {
     if (axios.isAxiosError(error)) {
       let errorMessage: string;
       if (error.code === 'ECONNREFUSED') {
@@ -75,7 +75,7 @@ export class OllamaClient {
         errorMessage = `Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`;
       } else if (error.response) {
         const details = typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data 
-          ? error.response.data.message 
+          ? (error.response.data as any).message 
           : '(no details)';
         errorMessage = `Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${details}`;
       } else {
@@ -136,7 +136,7 @@ export class OllamaClient {
         yield response.data;
       }
     } catch (error) {
-      this._handleAxiosError(error as AxiosError, baseUrl);
+      this.handleAxiosError(error as AxiosError, baseUrl);
     }
   }
 
@@ -150,7 +150,7 @@ export class OllamaClient {
       }
       return response.data.models;
     } catch (error) {
-      this._handleAxiosError(error as AxiosError, baseUrl);
+      this.handleAxiosError(error as AxiosError, baseUrl);
     }
   }
 }

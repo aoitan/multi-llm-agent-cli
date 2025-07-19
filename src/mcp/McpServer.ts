@@ -55,8 +55,8 @@ export class McpServer {
         // 簡易的な計算処理
         const result = eval(expression); // evalの使用はセキュリティリスクがあるため、実際のプロダクションでは避けるべき
         return `計算結果: ${expression} = ${result}`;
-      } catch (e) {
-        return `計算エラー: ${e.message}`;
+      } catch (e: any) {
+        return `計算エラー: ${(e as Error).message}`;
       }
     });
 
@@ -117,8 +117,8 @@ export class McpServer {
         } else {
           logger.warn(`Invalid plugin format: ${file}. Must export 'name' and 'handler' function.`);
         }
-      } catch (e) {
-        logger.error(`Failed to load plugin ${file}:`, e);
+      } catch (e: any) {
+        logger.error(`Failed to load plugin ${file}:`, (e as Error).message);
       }
     }
   }
@@ -199,8 +199,8 @@ export class McpServer {
       try {
         toolResult = await this.callTool(toolName, toolArgs);
         this.sendNotification(ws, 'task_status_update', { taskId, status: task.status, message: `Tool result: ${toolResult}` });
-      } catch (e) {
-        toolResult = `Tool error: ${e.message}`;
+      } catch (e: any) {
+        toolResult = `Tool error: ${(e as Error).message}`;
         this.sendNotification(ws, 'task_status_update', { taskId, status: task.status, message: toolResult });
       }
     }
