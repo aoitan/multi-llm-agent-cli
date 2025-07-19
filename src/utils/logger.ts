@@ -14,12 +14,8 @@ enum LogLevel {
 }
 
 async function log(level: LogLevel, message: string, ...args: any[]) {
-  try {
-    await fsp.access(LOG_DIR); // ディレクトリが存在するか確認
-  } catch (error) {
-    // ディレクトリが存在しない場合、作成
-    await fsp.mkdir(LOG_DIR, { recursive: true });
-  }
+  // 必要に応じてディレクトリを作成
+  await fsp.mkdir(LOG_DIR, { recursive: true });
 
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] [${level}] ${message}`;
