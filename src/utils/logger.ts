@@ -23,7 +23,8 @@ async function log(level: LogLevel, message: string, ...args: any[]) {
 
   // コンソールにも出力 (ERRORレベルは常に、その他は開発時のみなど調整可能)
   if (level === LogLevel.ERROR || process.env.NODE_ENV !== 'production') {
-    console.log(logMessage, ...args);
+    const formattedArgs = args.length > 0 ? ` ${args.map(arg => JSON.stringify(arg)).join(' ')}` : '';
+    console.log(logMessage + formattedArgs);
   }
 }
 
