@@ -204,7 +204,7 @@ export class McpServer {
         toolResult = await this.callTool(toolName, toolArgs);
         this.sendNotification(ws, 'task_status_update', { taskId, status: task.status, message: `Tool result: ${toolResult}` });
       } catch (e: any) {
-        toolResult = `Tool error: ${(e as Error).message}`;
+        toolResult = `Tool error: ${e instanceof Error ? e.message : String(e)}`;
         this.sendNotification(ws, 'task_status_update', { taskId, status: task.status, message: toolResult });
       }
     }
