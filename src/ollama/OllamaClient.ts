@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, { AxiosError } from 'axios';
 import { getCurrentEndpoint, listEndpoints, Endpoint } from '../config';
 
 export interface Message {
@@ -114,11 +114,19 @@ export class OllamaClient {
         yield response.data;
       }
     } catch (error) {
-      console.error('Error during chat API call:', error);
-      if (axios.isAxiosError(error) && error.response) {
-        // throw new Error(`Ollama API error: ${error.response.status} - ${error.response.statusText}`); // この行を削除
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED') {
+          throw new Error(`Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`);
+        } else if (error.code === 'ETIMEDOUT') {
+          throw new Error(`Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`);
+        } else if (error.response) {
+          throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${JSON.stringify(error.response.data)}`);
+        } else {
+          throw new Error(`ネットワークエラー: ${error.message}`);
+        }
+      } else {
+        throw error; // その他のエラー
       }
-      throw error; // 元のAxiosErrorをスロー
     }
   }
 
@@ -132,11 +140,19 @@ export class OllamaClient {
       }
       return response.data.models;
     } catch (error) {
-      console.error('Error during getModels API call:', error);
-      if (axios.isAxiosError(error) && error.response) {
-        // throw new Error(`Ollama API error: ${error.response.status} - ${error.response.statusText}`); // この行を削除
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNREFUSED') {
+          throw new Error(`Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`);
+        } else if (error.code === 'ETIMEDOUT') {
+          throw new Error(`Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`);
+        } else if (error.response) {
+          throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${JSON.stringify(error.response.data)}`);
+        } else {
+          throw new Error(`ネットワークエラー: ${error.message}`);
+        }
+      } else {
+        throw error; // その他のエラー
       }
-      throw error; // 元のAxiosErrorをスロー
     }
   }
 }

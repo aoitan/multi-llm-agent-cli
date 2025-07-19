@@ -1,4 +1,4 @@
-import { OllamaClient, ChatResponseChunk, Model, Message } from '@ollama/OllamaClient';
+import { OllamaClient, ChatResponseChunk, Model, Message } from '../../ollama/OllamaClient';
 import axios, { AxiosError } from 'axios';
 
 // axiosをモック化
@@ -14,12 +14,18 @@ jest.mock('axios', () => ({
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
+// configモジュールをモック化
+jest.mock('../../config', () => ({
+  getCurrentEndpoint: jest.fn(() => ({ name: 'test', url: 'http://localhost:11434' })),
+  listEndpoints: jest.fn(() => ([{ name: 'test', url: 'http://localhost:11434' }])),
+}));
+
 describe('OllamaClient', () => {
   let client: OllamaClient;
-  const baseUrl = 'http://localhost:11434';
+  const baseUrl = 'http://localhost:11434'; // モックされたエンドポイントのURL
 
   beforeEach(() => {
-    client = new OllamaClient(baseUrl);
+    client = new OllamaClient(); // 引数なしで初期化
     mockedAxios.post.mockClear();
     mockedAxios.get.mockClear();
   });
@@ -117,8 +123,8 @@ describe('OllamaClient', () => {
       } catch (e) {
         thrownError = e;
       }
-      expect(thrownError).toBeInstanceOf(AxiosError);
-      expect(thrownError.message).toContain('Request failed with status code 500');
+      expect(thrownError).toBeInstanceOf(Error);
+      expect(thrownError.message).toContain('Ollama APIエラー (500): Internal Server Error');
     });
   });
 
@@ -162,8 +168,8 @@ describe('OllamaClient', () => {
       } catch (e) {
         thrownError = e;
       }
-      expect(thrownError).toBeInstanceOf(AxiosError);
-      expect(thrownError.message).toContain('Request failed with status code 404');
+      expect(thrownError).toBeInstanceOf(Error);
+      expect(thrownError.message).toContain('Ollama APIエラー (404): Not Found');
     });
   });
 });
