@@ -70,7 +70,8 @@
 - `name`: エンドポイントを識別するための一意な名前
 - `url`: Ollama APIのエンドポイントURL
 
-### チャットリクエスト (部分)
+### チャットリクエストの主要プロパティ
+Ollama APIのチャットリクエストのうち、主要なプロパティを以下に示す。
 ```typescript
 interface ChatRequest {
   model: string;
