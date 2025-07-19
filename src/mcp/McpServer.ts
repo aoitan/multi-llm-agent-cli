@@ -3,6 +3,7 @@ import { OllamaClient, Message } from '../ollama/OllamaClient';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { logger } from '../utils/logger';
 
 interface JsonRpcRequest {
   jsonrpc: '2.0';
@@ -61,32 +62,32 @@ export class McpServer {
 
     this.loadPlugins(); // プラグインをロード
 
-    console.log(`MCP Server started on ws://localhost:${port}`);
+    logger.info(`MCP Server started on ws://localhost:${port}`);
 
     this.wss.on('connection', ws => {
-      console.log('Client connected');
+      logger.info('Client connected');
 
       ws.on('message', message => {
         this.handleMessage(ws, message.toString());
       });
 
       ws.on('close', () => {
-        console.log('Client disconnected');
+        logger.info('Client disconnected');
       });
 
       ws.on('error', error => {
-        console.error('WebSocket error:', error);
+        logger.error('WebSocket error:', error);
       });
     });
 
     this.wss.on('error', error => {
-      console.error('WebSocket server error:', error);
+      logger.error('WebSocket server error:', error);
     });
   }
 
   private registerTool(name: string, func: ToolFunction) {
     this.tools.set(name, func);
-    console.log(`Tool registered: ${name}`);
+    logger.info(`Tool registered: ${name}`);
   }
 
   private async callTool(toolName: string, ...args: any[]): Promise<any> {
@@ -100,7 +101,7 @@ export class McpServer {
   private loadPlugins() {
     if (!fs.existsSync(PLUGIN_DIR)) {
       fs.mkdirSync(PLUGIN_DIR, { recursive: true });
-      console.log(`Plugin directory created: ${PLUGIN_DIR}`);
+      logger.info(`Plugin directory created: ${PLUGIN_DIR}`);
       return;
     }
 
@@ -114,10 +115,10 @@ export class McpServer {
         if (plugin.name && typeof plugin.handler === 'function') {
           this.registerTool(plugin.name, plugin.handler);
         } else {
-          console.warn(`Invalid plugin format: ${file}. Must export 'name' and 'handler' function.`);
+          logger.warn(`Invalid plugin format: ${file}. Must export 'name' and 'handler' function.`);
         }
       } catch (e) {
-        console.error(`Failed to load plugin ${file}:`, e);
+        logger.error(`Failed to load plugin ${file}:`, e);
       }
     }
   }
@@ -154,7 +155,7 @@ export class McpServer {
               this.tasks.get(taskId)!.status = 'completed';
             })
             .catch(error => {
-              console.error(`Orchestration failed for task ${taskId}:`, error);
+              logger.error(`Orchestration failed for task ${taskId}:`, error);
               this.sendError(ws, request.id, -32000, `Orchestration failed: ${error.message}`);
               this.tasks.get(taskId)!.status = 'failed';
             });
@@ -164,7 +165,7 @@ export class McpServer {
           break;
       }
     } catch (error) {
-      console.error('Error parsing message or handling request:', error);
+      logger.error('Error parsing message or handling request:', error);
       this.sendError(ws, null, -32700, 'Parse error');
     }
   }
