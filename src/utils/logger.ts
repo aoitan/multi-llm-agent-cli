@@ -14,7 +14,10 @@ enum LogLevel {
 }
 
 async function log(level: LogLevel, message: string, ...args: any[]) {
-  if (!fs.existsSync(LOG_DIR)) {
+  try {
+    await fsp.access(LOG_DIR); // ディレクトリが存在するか確認
+  } catch (error) {
+    // ディレクトリが存在しない場合、作成
     await fsp.mkdir(LOG_DIR, { recursive: true });
   }
 
