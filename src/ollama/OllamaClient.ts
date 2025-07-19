@@ -65,6 +65,22 @@ export class OllamaClient {
     return endpoint;
   }
 
+  private _handleAxiosError(error: unknown, baseUrl: string): never {
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNREFUSED') {
+        throw new Error(`Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`);
+      } else if (error.code === 'ETIMEDOUT') {
+        throw new Error(`Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`);
+      } else if (error.response) {
+        throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${JSON.stringify(error.response.data)}`);
+      } else {
+        throw new Error(`ネットワークエラー: ${error.message}`);
+      }
+    } else {
+      throw error; // その他のエラー
+    }
+  }
+
   public async *chat(model: string, messages: Message[], stream: boolean = true): AsyncGenerator<ChatResponseChunk> {
     const baseUrl = this.getNextEndpoint();
     const url = `${baseUrl}/api/chat`;
@@ -114,19 +130,7 @@ export class OllamaClient {
         yield response.data;
       }
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.code === 'ECONNREFUSED') {
-          throw new Error(`Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`);
-        } else if (error.code === 'ETIMEDOUT') {
-          throw new Error(`Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`);
-        } else if (error.response) {
-          throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${JSON.stringify(error.response.data)}`);
-        } else {
-          throw new Error(`ネットワークエラー: ${error.message}`);
-        }
-      } else {
-        throw error; // その他のエラー
-      }
+      this._handleAxiosError(error, baseUrl);
     }
   }
 
@@ -140,19 +144,7 @@ export class OllamaClient {
       }
       return response.data.models;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.code === 'ECONNREFUSED') {
-          throw new Error(`Ollamaサーバーに接続できません。エンドポイント: ${baseUrl} が正しいか、Ollamaが実行中か確認してください。`);
-        } else if (error.code === 'ETIMEDOUT') {
-          throw new Error(`Ollamaサーバーへの接続がタイムアウトしました。エンドポイント: ${baseUrl} が応答しているか確認してください。`);
-        } else if (error.response) {
-          throw new Error(`Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${JSON.stringify(error.response.data)}`);
-        } else {
-          throw new Error(`ネットワークエラー: ${error.message}`);
-        }
-      } else {
-        throw error; // その他のエラー
-      }
+      this._handleAxiosError(error, baseUrl);
     }
   }
 }
