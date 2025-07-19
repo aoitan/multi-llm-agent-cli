@@ -118,7 +118,11 @@ export class McpServer {
           logger.warn(`Invalid plugin format: ${file}. Must export 'name' and 'handler' function.`);
         }
       } catch (e: any) {
-        logger.error(`Failed to load plugin ${file}:`, (e as Error).message);
+        if (e instanceof Error) {
+          logger.error(`Failed to load plugin ${file}:`, e.message);
+        } else {
+          logger.error(`Failed to load plugin ${file}:`, String(e));
+        }
       }
     }
   }
