@@ -2,10 +2,14 @@ import axios, { AxiosError } from 'axios';
 import { getCurrentEndpoint, listEndpoints, Endpoint } from '../config';
 import { logger } from '../utils/logger';
 
+function isErrorResponseDataWithMessage(data: unknown): data is { message: string } {
+  return typeof data === 'object' && data !== null && 'message' in data && typeof (data as any).message === 'string';
+}
+
 function getErrorMessageFromAxiosError(error: AxiosError): string {
   if (error.response) {
-    const details = typeof error.response.data === 'object' && error.response.data !== null && 'message' in error.response.data
-      ? (error.response.data as any).message
+    const details = isErrorResponseDataWithMessage(error.response.data)
+      ? error.response.data.message
       : '(no details)';
     return `Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${details}`;
   } else if (error.code === 'ECONNREFUSED') {
