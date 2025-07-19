@@ -56,7 +56,7 @@ export class McpServer {
         const result = eval(expression); // evalの使用はセキュリティリスクがあるため、実際のプロダクションでは避けるべき
         return `計算結果: ${expression} = ${result}`;
       } catch (e: any) {
-        return `計算エラー: ${(e as Error).message}`;
+        return `計算エラー: ${e instanceof Error ? e.message : String(e)}`;
       }
     });
 
