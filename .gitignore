@@ -29,3 +29,5 @@ local.*.md
 temp_commit_message.txt
 
 !jest.config.js
+
+doc/mcp-spec/
