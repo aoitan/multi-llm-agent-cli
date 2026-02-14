@@ -36,6 +36,6 @@
 
 ## 6. 関連
 
-- 理想仕様: [/Users/aoitan/workspace/mla_work/codex/doc/specification_ideal_v1.md](/Users/aoitan/workspace/mla_work/codex/doc/specification_ideal_v1.md)
-- 機能一覧: [/Users/aoitan/workspace/mla_work/codex/doc/feature_list.md](/Users/aoitan/workspace/mla_work/codex/doc/feature_list.md)
-- ユーザー可視振る舞い仕様: [/Users/aoitan/workspace/mla_work/codex/doc/spec_user_visible_behavior.md](/Users/aoitan/workspace/mla_work/codex/doc/spec_user_visible_behavior.md)
+- 理想仕様: [./specification_ideal_v1.md](./specification_ideal_v1.md)
+- 機能一覧: [./feature_list.md](./feature_list.md)
+- ユーザー可視振る舞い仕様: [./spec_user_visible_behavior.md](./spec_user_visible_behavior.md)

@@ -2,10 +2,10 @@
 
 本ロードマップは以下を前提とする。
 
-- 理想仕様: `/Users/aoitan/workspace/mla_work/codex/doc/specification_ideal_v1.md`
-- ユーザー可視振る舞い仕様: `/Users/aoitan/workspace/mla_work/codex/doc/spec_user_visible_behavior.md`
-- 配置モデル: `/Users/aoitan/workspace/mla_work/codex/doc/deployment_model_single_control_node.md`
-- タスク分解: `/Users/aoitan/workspace/mla_work/codex/doc/task_breakdown_epic_story_task.md`
+- 理想仕様: `./specification_ideal_v1.md`
+- ユーザー可視振る舞い仕様: `./spec_user_visible_behavior.md`
+- 配置モデル: `./deployment_model_single_control_node.md`
+- タスク分解: `./task_breakdown_epic_story_task.md`
 
 ## フェーズ0: 仕様固定と移行準備
 

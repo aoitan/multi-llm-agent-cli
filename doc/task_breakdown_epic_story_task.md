@@ -3,10 +3,10 @@
 本ドキュメントは、新仕様を実装可能なバックログへ分解したものである。
 
 - 参照仕様:
-  - `/Users/aoitan/workspace/mla_work/codex/doc/specification_ideal_v1.md`
-  - `/Users/aoitan/workspace/mla_work/codex/doc/spec_user_visible_behavior.md`
-  - `/Users/aoitan/workspace/mla_work/codex/doc/feature_list.md`
-  - `/Users/aoitan/workspace/mla_work/codex/doc/deployment_model_single_control_node.md`
+  - `./specification_ideal_v1.md`
+  - `./spec_user_visible_behavior.md`
+  - `./feature_list.md`
+  - `./deployment_model_single_control_node.md`
 
 ## 1. 運用ルール
 

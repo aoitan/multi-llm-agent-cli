@@ -196,10 +196,10 @@ flowchart LR
 
 ## 11. 機能別仕様リンク
 
-- 機能一覧: [/Users/aoitan/workspace/mla_work/codex/doc/feature_list.md](/Users/aoitan/workspace/mla_work/codex/doc/feature_list.md)
-- 機能別詳細インデックス: [/Users/aoitan/workspace/mla_work/codex/doc/features/README.md](/Users/aoitan/workspace/mla_work/codex/doc/features/README.md)
-- ユーザー可視振る舞い仕様: [/Users/aoitan/workspace/mla_work/codex/doc/spec_user_visible_behavior.md](/Users/aoitan/workspace/mla_work/codex/doc/spec_user_visible_behavior.md)
-- 配置モデル仕様: [/Users/aoitan/workspace/mla_work/codex/doc/deployment_model_single_control_node.md](/Users/aoitan/workspace/mla_work/codex/doc/deployment_model_single_control_node.md)
+- 機能一覧: [./feature_list.md](./feature_list.md)
+- 機能別詳細インデックス: [./features/README.md](./features/README.md)
+- ユーザー可視振る舞い仕様: [./spec_user_visible_behavior.md](./spec_user_visible_behavior.md)
+- 配置モデル仕様: [./deployment_model_single_control_node.md](./deployment_model_single_control_node.md)
 
 ---
 

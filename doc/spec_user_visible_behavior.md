@@ -359,7 +359,7 @@
 
 ## 6. 関連ドキュメント
 
-- 機能一覧: [/Users/aoitan/workspace/mla_work/codex/doc/feature_list.md](/Users/aoitan/workspace/mla_work/codex/doc/feature_list.md)
-- 理想仕様: [/Users/aoitan/workspace/mla_work/codex/doc/specification_ideal_v1.md](/Users/aoitan/workspace/mla_work/codex/doc/specification_ideal_v1.md)
-- 機能別仕様インデックス: [/Users/aoitan/workspace/mla_work/codex/doc/features/README.md](/Users/aoitan/workspace/mla_work/codex/doc/features/README.md)
-- 配置モデル仕様: [/Users/aoitan/workspace/mla_work/codex/doc/deployment_model_single_control_node.md](/Users/aoitan/workspace/mla_work/codex/doc/deployment_model_single_control_node.md)
+- 機能一覧: [./feature_list.md](./feature_list.md)
+- 理想仕様: [./specification_ideal_v1.md](./specification_ideal_v1.md)
+- 機能別仕様インデックス: [./features/README.md](./features/README.md)
+- 配置モデル仕様: [./deployment_model_single_control_node.md](./deployment_model_single_control_node.md)
