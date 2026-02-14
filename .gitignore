@@ -27,6 +27,7 @@ coverage/
 local.*.md
 .git_commit_message.txt
 temp_commit_message.txt
+.serena/
 
 !jest.config.js
 
