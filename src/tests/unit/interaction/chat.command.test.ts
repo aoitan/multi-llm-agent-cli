@@ -1,6 +1,6 @@
-import * as readline from "readline";
-import { runChatCommand } from "../../../interaction/cli/commands/chat.command";
-import { RunChatUseCase } from "../../../application/chat/run-chat.usecase";
+import * as readline from 'readline';
+import { runChatCommand } from '../../../interaction/cli/commands/chat.command';
+import { RunChatUseCase } from '../../../application/chat/run-chat.usecase';
 
 type Handler = (line?: string) => void;
 type Message = { role: string; content: string };
@@ -25,11 +25,11 @@ const mockInterface: MockInterface = {
   }),
 };
 
-jest.mock("readline", () => ({
+jest.mock('readline', () => ({
   createInterface: jest.fn(() => mockInterface),
 }));
 
-describe("chat.command interaction serialization", () => {
+describe('chat.command interaction serialization', () => {
   afterEach(() => {
     jest.restoreAllMocks();
     Object.keys(handlers).forEach((k) => delete handlers[k]);
@@ -38,51 +38,41 @@ describe("chat.command interaction serialization", () => {
     mockInterface.close.mockClear();
   });
 
-  it("serializes interactive turns and avoids concurrent runTurn execution", async () => {
+  it('serializes interactive turns and avoids concurrent runTurn execution', async () => {
     let resolveFirstTurn: (() => void) | undefined;
     const firstTurnGate = new Promise<void>((resolve) => {
       resolveFirstTurn = resolve;
     });
 
-    const runTurn = jest.fn(async function* (
-      _model: string,
-      messages: Message[],
-    ) {
-      const userMessages = messages.filter((m) => m.role === "user");
+    const runTurn = jest.fn(async function* (_model: string, messages: Message[]) {
+      const userMessages = messages.filter((m) => m.role === 'user');
       const lastUserMessage = userMessages[userMessages.length - 1]?.content;
-      if (lastUserMessage === "first") {
+      if (lastUserMessage === 'first') {
         await firstTurnGate;
-        yield "first-response";
+        yield 'first-response';
         return;
       }
 
-      yield "second-response";
+      yield 'second-response';
     });
 
     const useCase = {
       startSession: jest.fn().mockResolvedValue({
         ok: true,
-        model: "test-model",
-        source: "default",
+        model: 'test-model',
+        source: 'default',
       }),
       runTurn,
     } as unknown as RunChatUseCase;
 
-    jest.spyOn(console, "log").mockImplementation(() => {});
-    jest.spyOn(console, "error").mockImplementation(() => {});
-    jest.spyOn(process.stdout, "write").mockImplementation(() => true);
+    jest.spyOn(console, 'log').mockImplementation(() => {});
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
-    await runChatCommand(
-      {},
-      {
-        useCase,
-        createSessionId: () => "session-1",
-        logEvent: jest.fn().mockResolvedValue(undefined),
-      },
-    );
+    await runChatCommand({}, { useCase, createSessionId: () => 'session-1' });
 
-    handlers.line("first");
-    handlers.line("second");
+    handlers.line('first');
+    handlers.line('second');
 
     await Promise.resolve();
     await Promise.resolve();
@@ -96,12 +86,10 @@ describe("chat.command interaction serialization", () => {
     expect(runTurn).toHaveBeenCalledTimes(2);
 
     const secondCallMessages = runTurn.mock.calls[1][1] as Message[];
-    expect(secondCallMessages).toEqual(
-      expect.arrayContaining([
-        { role: "user", content: "first" },
-        { role: "assistant", content: "first-response" },
-        { role: "user", content: "second" },
-      ]),
-    );
+    expect(secondCallMessages).toEqual(expect.arrayContaining([
+      { role: 'user', content: 'first' },
+      { role: 'assistant', content: 'first-response' },
+      { role: 'user', content: 'second' },
+    ]));
   });
 });

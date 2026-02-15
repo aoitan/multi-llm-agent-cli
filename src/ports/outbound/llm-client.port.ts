@@ -1,4 +1,4 @@
-import { ChatChunk, ChatMessage } from "../../shared/types/chat";
+import { ChatChunk, ChatMessage } from '../../shared/types/chat';
 
 export interface ModelSummary {
   name: string;

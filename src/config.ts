@@ -1,9 +1,9 @@
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
-const CONFIG_DIR = path.join(os.homedir(), ".multi-llm-agent-cli");
-const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
+const CONFIG_DIR = path.join(os.homedir(), '.multi-llm-agent-cli');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 
 export interface Endpoint {
   name: string;
@@ -17,9 +17,9 @@ interface Config {
 }
 
 const defaultConfig: Config = {
-  defaultModel: "llama2",
-  endpoints: [{ name: "default", url: "http://localhost:11434" }],
-  currentEndpoint: "default",
+  defaultModel: 'llama2',
+  endpoints: [{ name: 'default', url: 'http://localhost:11434' }],
+  currentEndpoint: 'default',
 };
 
 export function getConfig(): Config {
@@ -27,15 +27,11 @@ export function getConfig(): Config {
     return defaultConfig;
   }
   try {
-    const configContent = fs.readFileSync(CONFIG_FILE, "utf-8");
+    const configContent = fs.readFileSync(CONFIG_FILE, 'utf-8');
     const parsedConfig = JSON.parse(configContent);
-    return {
-      ...defaultConfig,
-      ...parsedConfig,
-      endpoints: parsedConfig.endpoints || defaultConfig.endpoints,
-    };
+    return { ...defaultConfig, ...parsedConfig, endpoints: parsedConfig.endpoints || defaultConfig.endpoints };
   } catch (error) {
-    console.error("設定ファイルの読み込み中にエラーが発生しました:", error);
+    console.error('設定ファイルの読み込み中にエラーが発生しました:', error);
     return defaultConfig;
   }
 }
@@ -47,19 +43,15 @@ export function setConfig(newConfig: Partial<Config>): void {
   const currentConfig = getConfig();
   const updatedConfig = { ...currentConfig, ...newConfig };
   try {
-    fs.writeFileSync(
-      CONFIG_FILE,
-      JSON.stringify(updatedConfig, null, 2),
-      "utf-8",
-    );
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(updatedConfig, null, 2), 'utf-8');
   } catch (error) {
-    console.error("設定ファイルの書き込み中にエラーが発生しました:", error);
+    console.error('設定ファイルの書き込み中にエラーが発生しました:', error);
   }
 }
 
 export function addEndpoint(name: string, url: string): void {
   const config = getConfig();
-  if (config.endpoints.some((ep) => ep.name === name)) {
+  if (config.endpoints.some(ep => ep.name === name)) {
     console.error(`エラー: エンドポイント '${name}' は既に存在します。`);
     return;
   }
@@ -70,24 +62,22 @@ export function addEndpoint(name: string, url: string): void {
 
 export function removeEndpoint(name: string): void {
   const config = getConfig();
-  if (!config.endpoints.some((ep) => ep.name === name)) {
+  if (!config.endpoints.some(ep => ep.name === name)) {
     console.error(`エラー: エンドポイント '${name}' は存在しません。`);
     return;
   }
   if (config.currentEndpoint === name) {
-    console.error(
-      `エラー: 現在使用中のエンドポイント '${name}' は削除できません。`,
-    );
+    console.error(`エラー: 現在使用中のエンドポイント '${name}' は削除できません。`);
     return;
   }
-  config.endpoints = config.endpoints.filter((ep) => ep.name !== name);
+  config.endpoints = config.endpoints.filter(ep => ep.name !== name);
   setConfig({ endpoints: config.endpoints });
   console.log(`エンドポイント '${name}' を削除しました。`);
 }
 
 export function setCurrentEndpoint(name: string): void {
   const config = getConfig();
-  if (!config.endpoints.some((ep) => ep.name === name)) {
+  if (!config.endpoints.some(ep => ep.name === name)) {
     console.error(`エラー: エンドポイント '${name}' は存在しません。`);
     return;
   }
@@ -97,14 +87,10 @@ export function setCurrentEndpoint(name: string): void {
 
 export function getCurrentEndpoint(): Endpoint {
   const config = getConfig();
-  const endpoint = config.endpoints.find(
-    (ep) => ep.name === config.currentEndpoint,
-  );
+  const endpoint = config.endpoints.find(ep => ep.name === config.currentEndpoint);
   if (!endpoint) {
     // This should ideally not happen if currentEndpoint is always valid
-    console.error(
-      `エラー: 現在のエンドポイント '${config.currentEndpoint}' が見つかりません。デフォルトを使用します。`,
-    );
+    console.error(`エラー: 現在のエンドポイント '${config.currentEndpoint}' が見つかりません。デフォルトを使用します。`);
     return defaultConfig.endpoints[0];
   }
   return endpoint;

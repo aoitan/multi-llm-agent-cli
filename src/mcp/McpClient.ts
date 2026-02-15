@@ -1,14 +1,14 @@
-import WebSocket from "ws";
+import WebSocket from 'ws';
 
 interface JsonRpcRequest {
-  jsonrpc: "2.0";
+  jsonrpc: '2.0';
   id: string | number;
   method: string;
   params?: any;
 }
 
 interface JsonRpcResponse {
-  jsonrpc: "2.0";
+  jsonrpc: '2.0';
   id: string | number | null;
   result?: any;
   error?: {
@@ -22,12 +22,9 @@ export class McpClient {
   private ws: WebSocket | null = null;
   private url: string;
   private messageIdCounter: number = 0;
-  private pendingRequests = new Map<
-    number,
-    { resolve: (value: any) => void; reject: (reason?: any) => void }
-  >();
+  private pendingRequests = new Map<number, { resolve: (value: any) => void; reject: (reason?: any) => void }>();
 
-  constructor(url: string = "ws://localhost:8080") {
+  constructor(url: string = 'ws://localhost:8080') {
     this.url = url;
   }
 
@@ -36,20 +33,20 @@ export class McpClient {
       this.ws = new WebSocket(this.url);
 
       this.ws.onopen = () => {
-        console.log("Connected to MCP Server");
+        console.log('Connected to MCP Server');
         resolve();
       };
 
-      this.ws.onmessage = (event) => {
+      this.ws.onmessage = event => {
         this.handleMessage(event.data.toString());
       };
 
       this.ws.onclose = () => {
-        console.log("Disconnected from MCP Server");
+        console.log('Disconnected from MCP Server');
       };
 
-      this.ws.onerror = (error) => {
-        console.error("WebSocket error:", error);
+      this.ws.onerror = error => {
+        console.error('WebSocket error:', error);
         reject(error);
       };
     });
@@ -64,12 +61,12 @@ export class McpClient {
 
   public async sendRequest(method: string, params?: any): Promise<any> {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error("WebSocket is not connected.");
+      throw new Error('WebSocket is not connected.');
     }
 
     const id = this.messageIdCounter++;
     const request: JsonRpcRequest = {
-      jsonrpc: "2.0",
+      jsonrpc: '2.0',
       id,
       method,
       params,
@@ -100,15 +97,12 @@ export class McpClient {
         // This might be a notification (a request without an id)
         const notification = response as JsonRpcRequest;
         if (notification.method) {
-          console.log(
-            `Received notification: ${notification.method} with params:`,
-            notification.params,
-          );
+          console.log(`Received notification: ${notification.method} with params:`, notification.params);
           // Handle notifications here (e.g., 'initialized', 'notifications/roots/list_changed')
         }
       }
     } catch (error) {
-      console.error("Error parsing message:", error);
+      console.error('Error parsing message:', error);
     }
   }
 }

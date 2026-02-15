@@ -1,27 +1,20 @@
-import axios, { AxiosError } from "axios";
-import { getCurrentEndpoint, listEndpoints, Endpoint } from "../config";
-import { logger } from "../utils/logger";
+import axios, { AxiosError } from 'axios';
+import { getCurrentEndpoint, listEndpoints, Endpoint } from '../config';
+import { logger } from '../utils/logger';
 
-function isErrorResponseDataWithMessage(
-  data: unknown,
-): data is { message: string } {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    "message" in data &&
-    typeof (data as any).message === "string"
-  );
+function isErrorResponseDataWithMessage(data: unknown): data is { message: string } {
+  return typeof data === 'object' && data !== null && 'message' in data && typeof (data as any).message === 'string';
 }
 
 function getErrorMessageFromAxiosError(error: AxiosError): string {
   if (error.response) {
     const details = isErrorResponseDataWithMessage(error.response.data)
       ? error.response.data.message
-      : "(no details)";
+      : '(no details)';
     return `Ollama APIエラー (${error.response.status}): ${error.response.statusText || error.message}. 詳細: ${details}`;
-  } else if (error.code === "ECONNREFUSED") {
+  } else if (error.code === 'ECONNREFUSED') {
     return `Ollamaサーバーに接続できません。Ollamaが実行中か確認してください。`;
-  } else if (error.code === "ETIMEDOUT") {
+  } else if (error.code === 'ETIMEDOUT') {
     return `Ollamaサーバーへの接続がタイムアウトしました。Ollamaが応答しているか確認してください。`;
   } else {
     return `ネットワークエラー: ${error.message}`;
@@ -29,7 +22,7 @@ function getErrorMessageFromAxiosError(error: AxiosError): string {
 }
 
 export interface Message {
-  role: "user" | "assistant" | "system";
+  role: 'user' | 'assistant' | 'system';
   content: string;
 }
 
@@ -43,7 +36,7 @@ export interface ChatResponseChunk {
   model: string;
   created_at: string;
   message?: {
-    role: "assistant";
+    role: 'assistant';
     content: string;
   };
   done: boolean;
@@ -77,9 +70,7 @@ export class OllamaClient {
   constructor() {
     this.endpoints = listEndpoints();
     const currentEndpointName = getCurrentEndpoint().name;
-    this.currentEndpointIndex = this.endpoints.findIndex(
-      (ep) => ep.name === currentEndpointName,
-    );
+    this.currentEndpointIndex = this.endpoints.findIndex(ep => ep.name === currentEndpointName);
     if (this.currentEndpointIndex === -1) {
       this.currentEndpointIndex = 0; // Fallback to first endpoint if current is not found
     }
@@ -87,11 +78,10 @@ export class OllamaClient {
 
   private getNextEndpoint(): string {
     if (this.endpoints.length === 0) {
-      throw new Error("No Ollama endpoints configured.");
+      throw new Error('No Ollama endpoints configured.');
     }
     const endpoint = this.endpoints[this.currentEndpointIndex].url;
-    this.currentEndpointIndex =
-      (this.currentEndpointIndex + 1) % this.endpoints.length;
+    this.currentEndpointIndex = (this.currentEndpointIndex + 1) % this.endpoints.length;
     return endpoint;
   }
 
@@ -100,11 +90,7 @@ export class OllamaClient {
     throw new Error(errorMessage);
   }
 
-  public async *chat(
-    model: string,
-    messages: Message[],
-    stream: boolean = true,
-  ): AsyncGenerator<ChatResponseChunk> {
+  public async *chat(model: string, messages: Message[], stream: boolean = true): AsyncGenerator<ChatResponseChunk> {
     const baseUrl = this.getNextEndpoint();
     const url = `${baseUrl}/api/chat`;
     const body: ChatRequest = { model, messages, stream };
@@ -112,44 +98,41 @@ export class OllamaClient {
     try {
       const response = await axios.post<ChatResponseChunk>(url, body, {
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
         },
-        responseType: stream ? "stream" : "json",
+        responseType: stream ? 'stream' : 'json',
       });
 
       if (response.status !== 200) {
-        throw new Error(
-          `Ollama API error: ${response.status} - ${response.statusText}`,
-        );
+        throw new Error(`Ollama API error: ${response.status} - ${response.statusText}`);
       }
 
       if (stream && response.data) {
-        const readableStream =
-          response.data as unknown as NodeJS.ReadableStream;
-        const decoder = new TextDecoder("utf-8");
-        let buffer = "";
+        const readableStream = response.data as unknown as NodeJS.ReadableStream;
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
 
         for await (const chunk of readableStream) {
           buffer += decoder.decode(chunk as Uint8Array, { stream: true });
-          const lines = buffer.split("\n");
-          buffer = lines.pop() || ""; // Keep incomplete line in buffer
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
           for (const line of lines) {
-            if (line.trim() === "") continue;
+            if (line.trim() === '') continue;
             try {
               const parsedChunk: ChatResponseChunk = JSON.parse(line);
               yield parsedChunk;
             } catch (e) {
-              logger.error("Failed to parse JSON chunk:", line, e);
+              logger.error('Failed to parse JSON chunk:', line, e);
             }
           }
         }
-        if (buffer.trim() !== "") {
+        if (buffer.trim() !== '') {
           try {
             const parsedChunk: ChatResponseChunk = JSON.parse(buffer);
             yield parsedChunk;
           } catch (e) {
-            logger.error("Failed to parse final JSON chunk:", buffer, e);
+            logger.error('Failed to parse final JSON chunk:', buffer, e);
           }
         }
       } else {
@@ -166,9 +149,7 @@ export class OllamaClient {
     try {
       const response = await axios.get<{ models: Model[] }>(url);
       if (response.status !== 200) {
-        throw new Error(
-          `Ollama API error: ${response.status} - ${response.statusText}`,
-        );
+        throw new Error(`Ollama API error: ${response.status} - ${response.statusText}`);
       }
       return response.data.models;
     } catch (error) {

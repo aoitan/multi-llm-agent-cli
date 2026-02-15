@@ -1,4 +1,4 @@
-import { SessionStorePort } from "../../ports/outbound/session-store.port";
+import { SessionStorePort } from '../../ports/outbound/session-store.port';
 
 export class InMemorySessionStoreAdapter implements SessionStorePort {
   private readonly models = new Map<string, string>();

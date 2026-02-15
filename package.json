@@ -7,11 +7,7 @@
     "doc": "doc"
   },
   "scripts": {
-    "format": "npx --yes prettier@3 --write \"*.md\" \"doc/**/*.md\" \"src/**/*.ts\"",
-    "lint": "tsc --noEmit",
-    "test": "jest",
-    "hooks:install": "git config core.hooksPath .githooks",
-    "prepare": "npm run hooks:install"
+    "test": "jest"
   },
   "keywords": [],
   "author": "",

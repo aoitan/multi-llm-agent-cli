@@ -1,7 +1,7 @@
-import { ResolveModelUseCase } from "../model-endpoint/resolve-model.usecase";
-import { LlmClientPort } from "../../ports/outbound/llm-client.port";
-import { SessionStorePort } from "../../ports/outbound/session-store.port";
-import { ChatMessage, ModelResolutionSource } from "../../shared/types/chat";
+import { ResolveModelUseCase } from '../model-endpoint/resolve-model.usecase';
+import { LlmClientPort } from '../../ports/outbound/llm-client.port';
+import { SessionStorePort } from '../../ports/outbound/session-store.port';
+import { ChatMessage, ModelResolutionSource } from '../../shared/types/chat';
 
 export interface ChatSessionStartInput {
   sessionId: string;
@@ -16,14 +16,12 @@ export interface ChatSessionStartSuccess {
 
 export interface ChatSessionStartFailure {
   ok: false;
-  code: "MODEL_NOT_FOUND";
+  code: 'MODEL_NOT_FOUND';
   model: string;
   candidates: string[];
 }
 
-export type ChatSessionStartResult =
-  | ChatSessionStartSuccess
-  | ChatSessionStartFailure;
+export type ChatSessionStartResult = ChatSessionStartSuccess | ChatSessionStartFailure;
 
 export class RunChatUseCase {
   constructor(
@@ -32,9 +30,7 @@ export class RunChatUseCase {
     private readonly sessionStore: SessionStorePort,
   ) {}
 
-  async startSession(
-    input: ChatSessionStartInput,
-  ): Promise<ChatSessionStartResult> {
+  async startSession(input: ChatSessionStartInput): Promise<ChatSessionStartResult> {
     const resolved = await this.resolver.execute({
       sessionId: input.sessionId,
       cliModel: input.cliModel,
@@ -45,7 +41,7 @@ export class RunChatUseCase {
     if (!availableModelNames.includes(resolved.model)) {
       return {
         ok: false,
-        code: "MODEL_NOT_FOUND",
+        code: 'MODEL_NOT_FOUND',
         model: resolved.model,
         candidates: availableModelNames,
       };
@@ -59,10 +55,7 @@ export class RunChatUseCase {
     };
   }
 
-  async *runTurn(
-    model: string,
-    messages: ChatMessage[],
-  ): AsyncGenerator<string> {
+  async *runTurn(model: string, messages: ChatMessage[]): AsyncGenerator<string> {
     for await (const chunk of this.llmClient.chat(model, messages)) {
       if (chunk.content) {
         yield chunk.content;
