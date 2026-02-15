@@ -1,0 +1,10 @@
+#!/usr/bin/env sh
+set -eu
+
+echo "[pre-commit] Running format..."
+npm run format
+
+echo "[pre-commit] Running lint..."
+npm run lint
+
+git add -u
