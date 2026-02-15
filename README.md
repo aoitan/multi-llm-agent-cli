@@ -31,6 +31,13 @@ multi-llm-agent-cli chat
 multi-llm-agent-cli use <model_name>
 ```
 
+### `chat`オプション (MVP)
+
+- `-s, --session-id <session_id>`: セッションIDを明示指定。未指定の場合は実行ごとに新規セッションIDが生成されます。
+- `--log-events`: チャットイベントログをローカル保存します（デフォルト無効）。
+  - 保存時は `user_input` / `assistant_response` の機密情報をマスクします。
+  - ログはローテーションされ、権限は所有者限定に設定されます。
+
 ## 開発フック
 
 コミット前とプッシュ前に品質チェックを強制するため、Git hookを利用します。

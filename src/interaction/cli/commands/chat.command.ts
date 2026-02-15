@@ -11,6 +11,7 @@ interface ChatCommandInput {
   prompt?: string;
   model?: string;
   sessionId?: string;
+  enableEventLog?: boolean;
 }
 
 interface ChatCommandDeps {
@@ -24,7 +25,9 @@ export async function runChatCommand(
   deps: ChatCommandDeps,
 ): Promise<void> {
   const errorPresenter = new ErrorPresenter();
-  const logEvent = deps.logEvent ?? writeChatEventLog;
+  const logEvent: ChatEventLogger = input.enableEventLog
+    ? (deps.logEvent ?? writeChatEventLog)
+    : async () => {};
   const sessionId = input.sessionId ?? deps.createSessionId();
   const start = await deps.useCase.startSession({
     sessionId,
