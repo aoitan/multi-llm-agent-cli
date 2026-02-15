@@ -4,6 +4,7 @@ import { ResolveModelUseCase } from './application/model-endpoint/resolve-model.
 import { FileConfigAdapter } from './adapters/config/file-config.adapter';
 import { OllamaClientAdapter } from './adapters/ollama/ollama-client.adapter';
 import { InMemorySessionStoreAdapter } from './adapters/session/in-memory-session-store.adapter';
+import { FileSessionStoreAdapter } from './adapters/session/file-session-store.adapter';
 import { runChatCommand } from './interaction/cli/commands/chat.command';
 import { LlmClientPort } from './ports/outbound/llm-client.port';
 import { ConfigPort } from './ports/outbound/config.port';
@@ -17,7 +18,10 @@ export function createProgram(deps?: {
 }): Command {
   const config = deps?.config ?? new FileConfigAdapter();
   const llmClient = deps?.llmClient ?? new OllamaClientAdapter();
-  const sessionStore = deps?.sessionStore ?? new InMemorySessionStoreAdapter();
+  const sessionStore = deps?.sessionStore
+    ?? (process.env.NODE_ENV === 'test'
+      ? new InMemorySessionStoreAdapter()
+      : new FileSessionStoreAdapter());
   const resolver = new ResolveModelUseCase(config, sessionStore);
   const useCase = deps?.useCase ?? new RunChatUseCase(resolver, llmClient, sessionStore);
 
@@ -31,9 +35,10 @@ export function createProgram(deps?: {
   program.command('chat [prompt]')
     .description('Run single-shot or interactive chat.')
     .option('-m, --model <model_name>', 'Model name to use')
-    .action(async (prompt: string | undefined, options: { model?: string }) => {
+    .option('-s, --session-id <session_id>', 'Session id for model/context reuse', 'default')
+    .action(async (prompt: string | undefined, options: { model?: string; sessionId?: string }) => {
       try {
-        await runChatCommand({ prompt, model: options.model }, {
+        await runChatCommand({ prompt, model: options.model, sessionId: options.sessionId }, {
           useCase,
           createSessionId: () => `session-${Date.now()}`,
         });
@@ -43,7 +48,10 @@ export function createProgram(deps?: {
       }
     });
 
-  program.command('model list')
+  const modelCommand = program.command('model')
+    .description('Model operations.');
+
+  modelCommand.command('list')
     .description('List available models from Ollama.')
     .action(async () => {
       try {
@@ -60,7 +68,7 @@ export function createProgram(deps?: {
       }
     });
 
-  program.command('model use <model_name>')
+  modelCommand.command('use <model_name>')
     .description('Set default model.')
     .action(async (modelName: string) => {
       try {

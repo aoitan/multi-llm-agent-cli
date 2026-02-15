@@ -6,6 +6,7 @@ import { ErrorPresenter } from '../../presenter/error-presenter';
 interface ChatCommandInput {
   prompt?: string;
   model?: string;
+  sessionId?: string;
 }
 
 interface ChatCommandDeps {
@@ -15,7 +16,7 @@ interface ChatCommandDeps {
 
 export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandDeps): Promise<void> {
   const errorPresenter = new ErrorPresenter();
-  const sessionId = deps.createSessionId();
+  const sessionId = input.sessionId ?? deps.createSessionId();
   const start = await deps.useCase.startSession({
     sessionId,
     cliModel: input.model,
