@@ -81,7 +81,12 @@ describe("F-001 CLI Chat acceptance", () => {
     const logEvent = jest.fn().mockResolvedValue(undefined);
 
     await runChatCommand(
-      { prompt: "hello?", model: "model-a", sessionId: "session-structured" },
+      {
+        prompt: "hello?",
+        model: "model-a",
+        sessionId: "session-structured",
+        enableEventLog: true,
+      },
       { useCase, createSessionId: () => "session-1", logEvent },
     );
 
@@ -107,5 +112,17 @@ describe("F-001 CLI Chat acceptance", () => {
         duration_ms: expect.any(Number),
       }),
     );
+  });
+
+  it("does not record chat events by default", async () => {
+    const useCase = createMockUseCase("model-a");
+    const logEvent = jest.fn().mockResolvedValue(undefined);
+
+    await runChatCommand(
+      { prompt: "hello?", model: "model-a", sessionId: "session-no-log" },
+      { useCase, createSessionId: () => "session-1", logEvent },
+    );
+
+    expect(logEvent).not.toHaveBeenCalled();
   });
 });
