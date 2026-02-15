@@ -63,6 +63,7 @@ export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandD
   });
 
   rl.prompt();
+  let lineQueue = Promise.resolve();
 
   const handleLine = async (line: string): Promise<void> => {
     const trimmed = line.trim();
@@ -87,7 +88,13 @@ export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandD
   };
 
   rl.on('line', (line) => {
-    void handleLine(line);
+    lineQueue = lineQueue
+      .then(() => handleLine(line))
+      .catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`エラーが発生しました: ${message}`);
+        rl.prompt();
+      });
   }).on('close', () => {
     console.log('Chat ended.');
   });
