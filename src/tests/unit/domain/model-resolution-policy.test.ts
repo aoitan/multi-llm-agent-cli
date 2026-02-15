@@ -1,4 +1,4 @@
-import { resolveModelByPriority } from '../../../../src/domain/model-endpoint/services/model-resolution-policy';
+import { resolveModelByPriority } from '../../../domain/model-endpoint/services/model-resolution-policy';
 
 describe('resolveModelByPriority', () => {
   it('prefers CLI model over session and default', () => {
@@ -26,5 +26,11 @@ describe('resolveModelByPriority', () => {
     });
 
     expect(result).toEqual({ model: 'default-model', source: 'default' });
+  });
+
+  it('throws when default model is empty', () => {
+    expect(() => resolveModelByPriority({
+      defaultModel: '   ',
+    })).toThrow('defaultModel is empty');
   });
 });

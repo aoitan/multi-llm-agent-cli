@@ -1,10 +1,9 @@
-import { RunChatUseCase } from '../../../../src/application/chat/run-chat.usecase';
-import { ResolveModelUseCase } from '../../../../src/application/model-endpoint/resolve-model.usecase';
-import { ConfigPort } from '../../../../src/ports/outbound/config.port';
-import { LlmClientPort, ModelSummary } from '../../../../src/ports/outbound/llm-client.port';
-import { SessionStorePort } from '../../../../src/ports/outbound/session-store.port';
-import { ErrorPresenter } from '../../../../src/interaction/presenter/error-presenter';
-import { ChatChunk, ChatMessage } from '../../../../src/shared/types/chat';
+import { RunChatUseCase } from '../../../application/chat/run-chat.usecase';
+import { ResolveModelUseCase } from '../../../application/model-endpoint/resolve-model.usecase';
+import { ConfigPort } from '../../../ports/outbound/config.port';
+import { LlmClientPort, ModelSummary } from '../../../ports/outbound/llm-client.port';
+import { SessionStorePort } from '../../../ports/outbound/session-store.port';
+import { ChatChunk, ChatMessage } from '../../../shared/types/chat';
 
 class FakeSessionStore implements SessionStorePort {
   private modelMap = new Map<string, string>();
@@ -24,6 +23,8 @@ class FakeConfig implements ConfigPort {
   async getDefaultModel(): Promise<string> {
     return this.defaultModel;
   }
+
+  async setDefaultModel(_model: string): Promise<void> {}
 }
 
 class FakeLlmClient implements LlmClientPort {
@@ -51,7 +52,6 @@ describe('RunChatUseCase', () => {
       resolver,
       new FakeLlmClient([{ name: 'default-model' }]),
       sessionStore,
-      new ErrorPresenter(),
     );
 
     const result = await useCase.startSession({ sessionId: 's-1' });
@@ -67,16 +67,18 @@ describe('RunChatUseCase', () => {
       resolver,
       new FakeLlmClient([{ name: 'available-model' }]),
       sessionStore,
-      new ErrorPresenter(),
     );
 
     const result = await useCase.startSession({ sessionId: 's-1' });
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
-      expect(result.errorMessage).toContain("モデル 'missing-model' は存在しません");
-      expect(result.errorMessage).toContain('model list');
-      expect(result.errorMessage).toContain('model use <name>');
+      expect(result).toEqual({
+        ok: false,
+        code: 'MODEL_NOT_FOUND',
+        model: 'missing-model',
+        candidates: ['available-model'],
+      });
     }
   });
 
@@ -94,7 +96,6 @@ describe('RunChatUseCase', () => {
         ],
       ),
       sessionStore,
-      new ErrorPresenter(),
     );
 
     const received: string[] = [];

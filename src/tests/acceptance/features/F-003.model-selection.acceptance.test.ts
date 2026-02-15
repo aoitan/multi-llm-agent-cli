@@ -1,6 +1,6 @@
-import { ResolveModelUseCase } from '../../../../src/application/model-endpoint/resolve-model.usecase';
-import { ConfigPort } from '../../../../src/ports/outbound/config.port';
-import { SessionStorePort } from '../../../../src/ports/outbound/session-store.port';
+import { ResolveModelUseCase } from '../../../application/model-endpoint/resolve-model.usecase';
+import { ConfigPort } from '../../../ports/outbound/config.port';
+import { SessionStorePort } from '../../../ports/outbound/session-store.port';
 
 class FixedConfig implements ConfigPort {
   constructor(private readonly model: string) {}
@@ -8,6 +8,8 @@ class FixedConfig implements ConfigPort {
   async getDefaultModel(): Promise<string> {
     return this.model;
   }
+
+  async setDefaultModel(_model: string): Promise<void> {}
 }
 
 class InMemorySessionStore implements SessionStorePort {

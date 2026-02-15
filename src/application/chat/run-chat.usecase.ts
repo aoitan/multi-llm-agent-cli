@@ -1,5 +1,4 @@
 import { ResolveModelUseCase } from '../model-endpoint/resolve-model.usecase';
-import { ErrorPresenter } from '../../interaction/presenter/error-presenter';
 import { LlmClientPort } from '../../ports/outbound/llm-client.port';
 import { SessionStorePort } from '../../ports/outbound/session-store.port';
 import { ChatMessage, ModelResolutionSource } from '../../shared/types/chat';
@@ -17,7 +16,9 @@ export interface ChatSessionStartSuccess {
 
 export interface ChatSessionStartFailure {
   ok: false;
-  errorMessage: string;
+  code: 'MODEL_NOT_FOUND';
+  model: string;
+  candidates: string[];
 }
 
 export type ChatSessionStartResult = ChatSessionStartSuccess | ChatSessionStartFailure;
@@ -27,7 +28,6 @@ export class RunChatUseCase {
     private readonly resolver: ResolveModelUseCase,
     private readonly llmClient: LlmClientPort,
     private readonly sessionStore: SessionStorePort,
-    private readonly errorPresenter: ErrorPresenter,
   ) {}
 
   async startSession(input: ChatSessionStartInput): Promise<ChatSessionStartResult> {
@@ -41,7 +41,9 @@ export class RunChatUseCase {
     if (!availableModelNames.includes(resolved.model)) {
       return {
         ok: false,
-        errorMessage: this.errorPresenter.modelNotFound(resolved.model, availableModelNames),
+        code: 'MODEL_NOT_FOUND',
+        model: resolved.model,
+        candidates: availableModelNames,
       };
     }
 

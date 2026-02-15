@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import { promises as fsp } from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { ConfigPort } from '../../ports/outbound/config.port';
@@ -19,33 +20,34 @@ export class FileConfigAdapter implements ConfigPort {
       return envModel;
     }
 
-    const data = this.readConfig();
+    const data = await this.readConfig();
     return data.defaultModel?.trim() || this.fallbackModel;
   }
 
   async setDefaultModel(model: string): Promise<void> {
-    const current = this.readConfig();
+    const current = await this.readConfig();
     const next: StoredConfig = {
       ...current,
       defaultModel: model,
     };
 
-    if (!fs.existsSync(CONFIG_DIR)) {
-      fs.mkdirSync(CONFIG_DIR, { recursive: true });
-    }
-
-    fs.writeFileSync(CONFIG_FILE, JSON.stringify(next, null, 2), 'utf-8');
+    await fsp.mkdir(CONFIG_DIR, { recursive: true });
+    await fsp.writeFile(CONFIG_FILE, JSON.stringify(next, null, 2), 'utf-8');
   }
 
-  private readConfig(): StoredConfig {
+  private async readConfig(): Promise<StoredConfig> {
     try {
       if (!fs.existsSync(CONFIG_FILE)) {
         return {};
       }
 
-      const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
+      const raw = await fsp.readFile(CONFIG_FILE, 'utf-8');
       return JSON.parse(raw) as StoredConfig;
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return {};
+      }
+      console.error('設定ファイルの読み込みに失敗しました:', error);
       return {};
     }
   }

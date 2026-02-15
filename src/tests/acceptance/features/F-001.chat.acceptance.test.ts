@@ -1,5 +1,5 @@
-import { runChatCommand } from '../../../../src/interaction/cli/commands/chat.command';
-import { RunChatUseCase } from '../../../../src/application/chat/run-chat.usecase';
+import { runChatCommand } from '../../../interaction/cli/commands/chat.command';
+import { RunChatUseCase } from '../../../application/chat/run-chat.usecase';
 
 function createMockUseCase(startModel = 'test-model') {
   return {
@@ -56,7 +56,9 @@ describe('F-001 CLI Chat acceptance', () => {
     const useCase = {
       startSession: jest.fn().mockResolvedValue({
         ok: false,
-        errorMessage: "エラー: モデル 'missing' は存在しません。\n次のアクション: model list",
+        code: 'MODEL_NOT_FOUND',
+        model: 'missing',
+        candidates: ['model-a'],
       }),
       runTurn: jest.fn(),
     } as unknown as RunChatUseCase;

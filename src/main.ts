@@ -5,18 +5,21 @@ import { FileConfigAdapter } from './adapters/config/file-config.adapter';
 import { OllamaClientAdapter } from './adapters/ollama/ollama-client.adapter';
 import { InMemorySessionStoreAdapter } from './adapters/session/in-memory-session-store.adapter';
 import { runChatCommand } from './interaction/cli/commands/chat.command';
-import { ErrorPresenter } from './interaction/presenter/error-presenter';
+import { LlmClientPort } from './ports/outbound/llm-client.port';
+import { ConfigPort } from './ports/outbound/config.port';
+import { SessionStorePort } from './ports/outbound/session-store.port';
 
 export function createProgram(deps?: {
   useCase?: RunChatUseCase;
-  llmClient?: OllamaClientAdapter;
-  config?: FileConfigAdapter;
+  llmClient?: LlmClientPort;
+  config?: ConfigPort;
+  sessionStore?: SessionStorePort;
 }): Command {
   const config = deps?.config ?? new FileConfigAdapter();
   const llmClient = deps?.llmClient ?? new OllamaClientAdapter();
-  const sessionStore = new InMemorySessionStoreAdapter();
+  const sessionStore = deps?.sessionStore ?? new InMemorySessionStoreAdapter();
   const resolver = new ResolveModelUseCase(config, sessionStore);
-  const useCase = deps?.useCase ?? new RunChatUseCase(resolver, llmClient, sessionStore, new ErrorPresenter());
+  const useCase = deps?.useCase ?? new RunChatUseCase(resolver, llmClient, sessionStore);
 
   const program = new Command();
 
@@ -29,34 +32,49 @@ export function createProgram(deps?: {
     .description('Run single-shot or interactive chat.')
     .option('-m, --model <model_name>', 'Model name to use')
     .action(async (prompt: string | undefined, options: { model?: string }) => {
-      await runChatCommand({ prompt, model: options.model }, {
-        useCase,
-        createSessionId: () => `session-${Date.now()}`,
-      });
+      try {
+        await runChatCommand({ prompt, model: options.model }, {
+          useCase,
+          createSessionId: () => `session-${Date.now()}`,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`チャット実行中にエラーが発生しました: ${message}`);
+      }
     });
 
   program.command('model list')
     .description('List available models from Ollama.')
     .action(async () => {
-      const models = await llmClient.listModels();
-      if (models.length === 0) {
-        console.log('利用可能なモデルがありません。');
-        return;
+      try {
+        const models = await llmClient.listModels();
+        if (models.length === 0) {
+          console.log('利用可能なモデルがありません。');
+          return;
+        }
+        console.log('利用可能なモデル:');
+        models.forEach((m) => console.log(`  - ${m.name}`));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`モデル一覧の取得に失敗しました: ${message}`);
       }
-      console.log('利用可能なモデル:');
-      models.forEach((m) => console.log(`  - ${m.name}`));
     });
 
   program.command('model use <model_name>')
     .description('Set default model.')
     .action(async (modelName: string) => {
-      const models = await llmClient.listModels();
-      if (!models.some((m) => m.name === modelName)) {
-        console.error(`エラー: モデル '${modelName}' は存在しません。`);
-        return;
+      try {
+        const models = await llmClient.listModels();
+        if (!models.some((m) => m.name === modelName)) {
+          console.error(`エラー: モデル '${modelName}' は存在しません。`);
+          return;
+        }
+        await config.setDefaultModel(modelName);
+        console.log(`デフォルトモデルを '${modelName}' に設定しました。`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`モデル設定に失敗しました: ${message}`);
       }
-      await config.setDefaultModel(modelName);
-      console.log(`デフォルトモデルを '${modelName}' に設定しました。`);
     });
 
   return program;

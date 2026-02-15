@@ -20,5 +20,10 @@ export function resolveModelByPriority(input: ModelResolutionInput): ModelResolu
     return { model: input.sessionModel.trim(), source: 'session' };
   }
 
-  return { model: input.defaultModel.trim(), source: 'default' };
+  const defaultModel = input.defaultModel.trim();
+  if (!defaultModel) {
+    throw new Error('Model resolution failed: defaultModel is empty.');
+  }
+
+  return { model: defaultModel, source: 'default' };
 }

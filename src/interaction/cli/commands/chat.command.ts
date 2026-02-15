@@ -1,6 +1,7 @@
 import * as readline from 'readline';
 import { RunChatUseCase } from '../../../application/chat/run-chat.usecase';
 import { ChatMessage } from '../../../shared/types/chat';
+import { ErrorPresenter } from '../../presenter/error-presenter';
 
 interface ChatCommandInput {
   prompt?: string;
@@ -13,6 +14,7 @@ interface ChatCommandDeps {
 }
 
 export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandDeps): Promise<void> {
+  const errorPresenter = new ErrorPresenter();
   const sessionId = deps.createSessionId();
   const start = await deps.useCase.startSession({
     sessionId,
@@ -20,7 +22,7 @@ export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandD
   });
 
   if (!start.ok) {
-    console.error(start.errorMessage);
+    console.error(errorPresenter.modelNotFound(start.model, start.candidates));
     return;
   }
 
@@ -44,7 +46,12 @@ export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandD
   };
 
   if (input.prompt) {
-    await streamOneTurn(input.prompt);
+    try {
+      await streamOneTurn(input.prompt);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`エラーが発生しました: ${message}`);
+    }
     return;
   }
 
@@ -56,7 +63,7 @@ export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandD
 
   rl.prompt();
 
-  rl.on('line', async (line) => {
+  const handleLine = async (line: string): Promise<void> => {
     const trimmed = line.trim();
     if (trimmed === '/exit' || trimmed === '/quit') {
       rl.close();
@@ -68,8 +75,18 @@ export async function runChatCommand(input: ChatCommandInput, deps: ChatCommandD
       return;
     }
 
-    await streamOneTurn(trimmed);
-    rl.prompt();
+    try {
+      await streamOneTurn(trimmed);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`エラーが発生しました: ${message}`);
+    } finally {
+      rl.prompt();
+    }
+  };
+
+  rl.on('line', (line) => {
+    void handleLine(line);
   }).on('close', () => {
     console.log('Chat ended.');
   });
