@@ -10,7 +10,7 @@
     "format": "npx --yes prettier@3 --write \"*.md\" \"doc/**/*.md\" \"src/**/*.ts\"",
     "lint": "tsc --noEmit",
     "test": "jest",
-    "hooks:install": "git config core.hooksPath .githooks",
+    "hooks:install": "git config core.hooksPath .githooks && chmod u+x .githooks/*",
     "prepare": "npm run hooks:install"
   },
   "keywords": [],

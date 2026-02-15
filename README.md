@@ -40,5 +40,5 @@ npm install
 npm run hooks:install
 ```
 
-- `pre-commit`: `npm run format` -> `npm run lint`
+- `pre-commit`: ステージ済みの `.ts` / `.md` を整形 -> `npm run lint`
 - `pre-push`: `npm test`
