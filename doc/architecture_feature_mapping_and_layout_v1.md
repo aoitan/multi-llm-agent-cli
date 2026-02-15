@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-本書は `doc/archive/specs/abstract_design_v1.md` を実装可能な粒度へ具体化し、`doc/feature_list.md` の各機能（F-001〜F-607）を、
+本書は `doc/abstract_design_v1.md` を実装可能な粒度へ具体化し、`doc/feature_list.md` の各機能（F-001〜F-607）を、
 「どのサブシステムが責務を持ち、どのディレクトリ/ファイルに実装されるか」へ接続する。
 
 ## 2. アーキテクチャ方針（理想）

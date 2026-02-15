@@ -3,7 +3,7 @@
 ## 1. 概要とゴール (Summary & Goal)
 
 - **Must**:
-  - `doc/archive/specs/abstract_design_v1.md` と `doc/archive/specs/architecture_feature_mapping_and_layout_v1.md` に準拠した、グリーンフィールド前提の設計へ更新する。
+  - `doc/abstract_design_v1.md` と `doc/architecture_feature_mapping_and_layout_v1.md` に準拠した、グリーンフィールド前提の設計へ更新する。
   - F-001（CLIチャット実行）/F-003（モデル選択）を「最小縦スライス」で成立させる設計にする。
   - モデル選択優先順 `引数 > セッション > 既定` を `application/model-endpoint` のユースケースとして定義する。
   - モデル未存在時のエラー導線（候補提示または `model list` 導線）を `interaction/presenter` で統一表示できる設計にする。
