@@ -30,3 +30,15 @@ multi-llm-agent-cli chat
 # モデル切り替え (予定)
 multi-llm-agent-cli use <model_name>
 ```
+
+## 開発フック
+
+コミット前とプッシュ前に品質チェックを強制するため、Git hookを利用します。
+
+```bash
+npm install
+npm run hooks:install
+```
+
+- `pre-commit`: ステージ済みの `.ts` / `.md` を整形 -> `npm run lint`
+- `pre-push`: `npm test`
