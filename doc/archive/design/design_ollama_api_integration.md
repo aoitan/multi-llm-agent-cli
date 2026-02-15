@@ -20,9 +20,11 @@
 
 Ollama APIとの通信には、既存のTypeScript/Node.js向けOllamaクライアントライブラリの利用を検討する。
 候補:
+
 - `ollama` (公式またはコミュニティ製のnpmパッケージ)
 
 選定基準:
+
 - 活発なメンテナンス状況
 - ドキュメントの充実度
 - 型定義の有無 (TypeScriptとの親和性)
@@ -35,10 +37,10 @@ Ollama APIとの通信には、既存のTypeScript/Node.js向けOllamaクライ�
 Ollama APIの主要なエンドポイントは以下の通り。
 
 - **チャット**: `POST /api/chat`
-    - リクエストボディ: `{"model": "...", "messages": [...], "stream": true}`
-    - レスポンス: ストリーミング形式のJSONオブジェクト
+  - リクエストボディ: `{"model": "...", "messages": [...], "stream": true}`
+  - レスポンス: ストリーミング形式のJSONオブジェクト
 - **モデル一覧**: `GET /api/tags`
-    - レスポンス: `{"models": [...]}`
+  - レスポンス: `{"models": [...]}`
 
 ## 6. データ構造
 
@@ -47,7 +49,7 @@ Ollama APIの主要なエンドポイントは以下の通り。
 ```typescript
 interface ChatRequest {
   model: string;
-  messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>;
+  messages: Array<{ role: "user" | "assistant" | "system"; content: string }>;
   stream?: boolean; // ストリーミング応答を有効にするか
 }
 ```
@@ -59,7 +61,7 @@ interface ChatResponseChunk {
   model: string;
   created_at: string;
   message?: {
-    role: 'assistant';
+    role: "assistant";
     content: string;
   };
   done: boolean;

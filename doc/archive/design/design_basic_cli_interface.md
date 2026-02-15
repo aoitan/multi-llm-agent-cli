@@ -24,13 +24,13 @@ CLIフレームワークとして `commander.js` を採用する。シンプル�
 ### コマンド構造
 
 - `multi-llm-agent-cli chat <prompt> [options]`
-    - `<prompt>`: ユーザーの入力プロンプト。スペースを含む場合は引用符で囲む。
-    - `[options]`:
-        - `--model <model_name>`: 使用するOllamaモデルを指定。省略時はデフォルトモデルを使用。
+  - `<prompt>`: ユーザーの入力プロンプト。スペースを含む場合は引用符で囲む。
+  - `[options]`:
+    - `--model <model_name>`: 使用するOllamaモデルを指定。省略時はデフォルトモデルを使用。
 - `multi-llm-agent-cli model list`
-    - 利用可能なOllamaモデルを一覧表示。
+  - 利用可能なOllamaモデルを一覧表示。
 - `multi-llm-agent-cli --help` / `-h`
-    - ヘルプメッセージを表示。
+  - ヘルプメッセージを表示。
 
 ### `src/index.ts` の役割
 

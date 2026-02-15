@@ -1,4 +1,10 @@
-import { addEndpoint, removeEndpoint, setCurrentEndpoint, listEndpoints, getCurrentEndpoint } from '../../config';
+import {
+  addEndpoint,
+  removeEndpoint,
+  setCurrentEndpoint,
+  listEndpoints,
+  getCurrentEndpoint,
+} from "../../config";
 
 export async function addEndpointCommand(name: string, url: string) {
   addEndpoint(name, url);
@@ -15,11 +21,13 @@ export async function useEndpointCommand(name: string) {
 export async function listEndpointsCommand() {
   const endpoints = listEndpoints();
   if (endpoints.length === 0) {
-    console.log('登録されているエンドポイントはありません。');
+    console.log("登録されているエンドポイントはありません。");
     return;
   }
-  console.log('登録されているOllamaエンドポイント:');
-  endpoints.forEach(ep => {
-    console.log(`  ${ep.name === getCurrentEndpoint().name ? '*' : ' ' } ${ep.name} (${ep.url})`);
+  console.log("登録されているOllamaエンドポイント:");
+  endpoints.forEach((ep) => {
+    console.log(
+      `  ${ep.name === getCurrentEndpoint().name ? "*" : " "} ${ep.name} (${ep.url})`,
+    );
   });
 }

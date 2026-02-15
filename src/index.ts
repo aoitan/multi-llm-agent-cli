@@ -1,4 +1,4 @@
-import { runCli } from './main';
+import { runCli } from "./main";
 
 void runCli(process.argv).catch((error) => {
   const message = error instanceof Error ? error.message : String(error);

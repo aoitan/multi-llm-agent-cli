@@ -1,6 +1,6 @@
-import { ResolveModelUseCase } from '../../../application/model-endpoint/resolve-model.usecase';
-import { ConfigPort } from '../../../ports/outbound/config.port';
-import { SessionStorePort } from '../../../ports/outbound/session-store.port';
+import { ResolveModelUseCase } from "../../../application/model-endpoint/resolve-model.usecase";
+import { ConfigPort } from "../../../ports/outbound/config.port";
+import { SessionStorePort } from "../../../ports/outbound/session-store.port";
 
 class FixedConfig implements ConfigPort {
   constructor(private readonly model: string) {}
@@ -24,36 +24,45 @@ class InMemorySessionStore implements SessionStorePort {
   }
 }
 
-describe('F-003 Model Selection acceptance', () => {
-  it('uses CLI model first', async () => {
+describe("F-003 Model Selection acceptance", () => {
+  it("uses CLI model first", async () => {
     const store = new InMemorySessionStore();
-    await store.setModel('s1', 'session-model');
-    const useCase = new ResolveModelUseCase(new FixedConfig('default-model'), store);
+    await store.setModel("s1", "session-model");
+    const useCase = new ResolveModelUseCase(
+      new FixedConfig("default-model"),
+      store,
+    );
 
     const result = await useCase.execute({
-      sessionId: 's1',
-      cliModel: 'cli-model',
+      sessionId: "s1",
+      cliModel: "cli-model",
     });
 
-    expect(result).toEqual({ model: 'cli-model', source: 'cli' });
+    expect(result).toEqual({ model: "cli-model", source: "cli" });
   });
 
-  it('uses session model when CLI model is absent', async () => {
+  it("uses session model when CLI model is absent", async () => {
     const store = new InMemorySessionStore();
-    await store.setModel('s1', 'session-model');
-    const useCase = new ResolveModelUseCase(new FixedConfig('default-model'), store);
+    await store.setModel("s1", "session-model");
+    const useCase = new ResolveModelUseCase(
+      new FixedConfig("default-model"),
+      store,
+    );
 
-    const result = await useCase.execute({ sessionId: 's1' });
+    const result = await useCase.execute({ sessionId: "s1" });
 
-    expect(result).toEqual({ model: 'session-model', source: 'session' });
+    expect(result).toEqual({ model: "session-model", source: "session" });
   });
 
-  it('uses default model when neither CLI nor session model is set', async () => {
+  it("uses default model when neither CLI nor session model is set", async () => {
     const store = new InMemorySessionStore();
-    const useCase = new ResolveModelUseCase(new FixedConfig('default-model'), store);
+    const useCase = new ResolveModelUseCase(
+      new FixedConfig("default-model"),
+      store,
+    );
 
-    const result = await useCase.execute({ sessionId: 's1' });
+    const result = await useCase.execute({ sessionId: "s1" });
 
-    expect(result).toEqual({ model: 'default-model', source: 'default' });
+    expect(result).toEqual({ model: "default-model", source: "default" });
   });
 });

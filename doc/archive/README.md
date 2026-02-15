@@ -11,4 +11,3 @@
 ## Design
 
 - `./design/` 配下の `design_*.md`
-
