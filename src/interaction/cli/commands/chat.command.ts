@@ -64,6 +64,7 @@ export async function runChatCommand(
   const streamOneTurn = async (prompt: string): Promise<void> => {
     const startedAt = Date.now();
     messages.push({ role: "user", content: prompt });
+    console.log("Generating...");
     process.stdout.write("AI: ");
 
     let response = "";
@@ -74,6 +75,7 @@ export async function runChatCommand(
       }
 
       process.stdout.write("\n");
+      console.log("Done.");
       messages.push({ role: "assistant", content: response });
 
       await safeLog({

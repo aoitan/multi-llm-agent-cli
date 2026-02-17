@@ -104,4 +104,34 @@ describe("chat.command interaction serialization", () => {
       ]),
     );
   });
+
+  it("prints running and completed status for each turn", async () => {
+    const useCase = {
+      startSession: jest.fn().mockResolvedValue({
+        ok: true,
+        model: "test-model",
+        source: "default",
+      }),
+      runTurn: jest.fn(async function* () {
+        yield "chunk-1";
+        yield "chunk-2";
+      }),
+    } as unknown as RunChatUseCase;
+
+    const logSpy = jest.spyOn(console, "log").mockImplementation(() => {});
+    jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.spyOn(process.stdout, "write").mockImplementation(() => true);
+
+    await runChatCommand(
+      { prompt: "hello" },
+      {
+        useCase,
+        createSessionId: () => "session-1",
+        logEvent: jest.fn().mockResolvedValue(undefined),
+      },
+    );
+
+    expect(logSpy).toHaveBeenCalledWith("Generating...");
+    expect(logSpy).toHaveBeenCalledWith("Done.");
+  });
 });
