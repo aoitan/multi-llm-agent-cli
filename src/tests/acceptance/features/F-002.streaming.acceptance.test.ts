@@ -13,6 +13,13 @@ function createMockUseCase() {
       yield "-second";
       yield "-third";
     }),
+    loadContext: jest
+      .fn()
+      .mockResolvedValue({
+        messages: [],
+        policy: { maxTurns: 10, summaryEnabled: false },
+      }),
+    recordTurn: jest.fn().mockResolvedValue(undefined),
   } as unknown as RunChatUseCase;
 }
 

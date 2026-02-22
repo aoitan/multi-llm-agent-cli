@@ -1,7 +1,7 @@
-import { resolveModelByPriority } from '../../domain/model-endpoint/services/model-resolution-policy';
-import { ConfigPort } from '../../ports/outbound/config.port';
-import { SessionStorePort } from '../../ports/outbound/session-store.port';
-import { ModelResolutionSource } from '../../shared/types/chat';
+import { resolveModelByPriority } from "../../domain/model-endpoint/services/model-resolution-policy";
+import { ConfigPort } from "../../ports/outbound/config.port";
+import { SessionStorePort } from "../../ports/outbound/session-store.port";
+import { ModelResolutionSource } from "../../shared/types/chat";
 
 export interface ResolveModelInput {
   sessionId: string;
@@ -20,9 +20,16 @@ export class ResolveModelUseCase {
   ) {}
 
   async execute(input: ResolveModelInput): Promise<ResolveModelOutput> {
+    const defaultModelPromise = this.config.getDefaultModel();
+    const sessionModelPromise = this.sessionStore.getSession
+      ? this.sessionStore
+          .getSession(input.sessionId)
+          .then((session) => session?.model)
+      : this.sessionStore.getModel(input.sessionId);
+
     const [defaultModel, sessionModel] = await Promise.all([
-      this.config.getDefaultModel(),
-      this.sessionStore.getModel(input.sessionId),
+      defaultModelPromise,
+      sessionModelPromise,
     ]);
 
     return resolveModelByPriority({

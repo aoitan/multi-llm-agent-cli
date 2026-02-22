@@ -59,12 +59,23 @@ describe("chat.command interaction serialization", () => {
       yield "second-response";
     });
 
+    const storedMessages: Message[] = [];
     const useCase = {
       startSession: jest.fn().mockResolvedValue({
         ok: true,
         model: "test-model",
         source: "default",
       }),
+      loadContext: jest.fn(async () => ({
+        messages: [...storedMessages],
+        policy: { maxTurns: 10, summaryEnabled: false },
+      })),
+      recordTurn: jest.fn(
+        async (_sid: string, user: string, assistant: string) => {
+          storedMessages.push({ role: "user", content: user });
+          storedMessages.push({ role: "assistant", content: assistant });
+        },
+      ),
       runTurn,
     } as unknown as RunChatUseCase;
 
@@ -112,6 +123,13 @@ describe("chat.command interaction serialization", () => {
         model: "test-model",
         source: "default",
       }),
+      loadContext: jest
+        .fn()
+        .mockResolvedValue({
+          messages: [],
+          policy: { maxTurns: 10, summaryEnabled: false },
+        }),
+      recordTurn: jest.fn().mockResolvedValue(undefined),
       runTurn: jest.fn(async function* () {
         yield "chunk-1";
         yield "chunk-2";

@@ -38,6 +38,18 @@ multi-llm-agent-cli use <model_name>
   - 保存時は `user_input` / `assistant_response` の機密情報をマスクします。
   - ログはローテーションされ、権限は所有者限定に設定されます。
 
+### `session` コマンド (MVP)
+
+- `session start [session_id]`: セッションを開始します（`--model`, `--max-turns`, `--summary` を指定可能）。
+- `session save <session_id>`: セッションの保存時刻を更新し、スナップショットを確定します。
+- `session load <session_id>`: 保存済みセッションのモデル/履歴件数/コンテキスト方針を表示します。
+- `session end <session_id>`: セッションを終了し、保存データを削除します。
+- `session context show|set|clear|summarize <session_id>`:
+  - `show`: 現在の保持件数・要約有無・履歴件数を表示
+  - `set --max-turns N --summary on|off`: 保持件数/自動要約を設定
+  - `clear --keep-turns N`: 履歴を破棄（最新Nターンのみ保持、既存summaryも破棄）
+  - `summarize`: 古い履歴を要約して圧縮
+
 ## 開発フック
 
 コミット前とプッシュ前に品質チェックを強制するため、Git hookを利用します。
