@@ -126,4 +126,66 @@ describe("FileSessionStoreAdapter", () => {
       ).rejects.toThrow("Timed out waiting for session lock after 120ms");
     });
   });
+
+  it("backs up non-object JSON roots and continues safely", async () => {
+    await withTempHome(async (tempHome) => {
+      const { FileSessionStoreAdapter } =
+        await import("../../../adapters/session/file-session-store.adapter");
+      const adapter = new FileSessionStoreAdapter();
+      const configDir = path.join(tempHome, ".multi-llm-agent-cli");
+      const sessionFile = path.join(configDir, "session.json");
+
+      await fsp.mkdir(configDir, { recursive: true });
+      await fsp.writeFile(sessionFile, "null", "utf-8");
+
+      await expect(adapter.getSession("s-1")).resolves.toBeUndefined();
+
+      const files = await fsp.readdir(configDir);
+      expect(
+        files.some((file) => file.startsWith("session.json.corrupt-")),
+      ).toBe(true);
+    });
+  });
+
+  it("sanitizes malformed session fields from valid JSON", async () => {
+    await withTempHome(async (tempHome) => {
+      const { FileSessionStoreAdapter } =
+        await import("../../../adapters/session/file-session-store.adapter");
+      const adapter = new FileSessionStoreAdapter();
+      const configDir = path.join(tempHome, ".multi-llm-agent-cli");
+      const sessionFile = path.join(configDir, "session.json");
+
+      await fsp.mkdir(configDir, { recursive: true });
+      await fsp.writeFile(
+        sessionFile,
+        JSON.stringify({
+          sessions: {
+            "s-1": {
+              model: 123,
+              summary: { text: "bad" },
+              messages: [
+                { role: "user", content: "ok" },
+                { role: "assistant", content: 100 },
+                { role: 10, content: "ng" },
+              ],
+              policy: { maxTurns: -3, summaryEnabled: "on" },
+              savedAt: 1,
+              loadedAt: { bad: true },
+              updatedAt: 999,
+            },
+          },
+        }),
+        "utf-8",
+      );
+
+      const session = await adapter.getSession("s-1");
+      expect(session?.model).toBeUndefined();
+      expect(session?.summary).toBeUndefined();
+      expect(session?.messages).toEqual([{ role: "user", content: "ok" }]);
+      expect(session?.policy).toEqual({ maxTurns: 10, summaryEnabled: false });
+      expect(session?.savedAt).toBeUndefined();
+      expect(session?.loadedAt).toBeUndefined();
+      expect(session?.updatedAt).toEqual(expect.any(String));
+    });
+  });
 });

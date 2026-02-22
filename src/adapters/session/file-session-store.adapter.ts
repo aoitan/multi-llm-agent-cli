@@ -2,6 +2,7 @@ import * as fs from "fs";
 import { promises as fsp } from "fs";
 import * as os from "os";
 import * as path from "path";
+import { ChatRole } from "../../shared/types/chat";
 import {
   DEFAULT_SESSION_CONTEXT_POLICY,
   isValidSessionId,
@@ -64,27 +65,65 @@ interface LockMetadata {
   createdAt: number;
 }
 
-function normalizeSession(
-  session: Partial<SessionRecord> | undefined,
-): SessionRecord {
+function toSafeOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function toSafeMessages(value: unknown): SessionRecord["messages"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const messages: SessionRecord["messages"] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+
+    const role = (item as Record<string, unknown>).role;
+    const content = (item as Record<string, unknown>).content;
+    if (!isChatRole(role) || typeof content !== "string") {
+      continue;
+    }
+    messages.push({ role, content });
+  }
+  return messages;
+}
+
+function isChatRole(value: unknown): value is ChatRole {
+  return value === "user" || value === "assistant" || value === "system";
+}
+
+function normalizeSession(session: unknown): SessionRecord {
+  const source =
+    session && typeof session === "object"
+      ? (session as Record<string, unknown>)
+      : {};
+  const policy =
+    source.policy && typeof source.policy === "object"
+      ? (source.policy as Record<string, unknown>)
+      : {};
+
   return {
-    model: session?.model,
-    messages: Array.isArray(session?.messages) ? [...session.messages] : [],
-    summary: session?.summary,
+    model: toSafeOptionalString(source.model),
+    messages: toSafeMessages(source.messages),
+    summary: toSafeOptionalString(source.summary),
     policy: {
       maxTurns:
-        typeof session?.policy?.maxTurns === "number" &&
-        session.policy.maxTurns >= 0
-          ? Math.floor(session.policy.maxTurns)
+        typeof policy.maxTurns === "number" && policy.maxTurns >= 0
+          ? Math.floor(policy.maxTurns)
           : DEFAULT_SESSION_CONTEXT_POLICY.maxTurns,
       summaryEnabled:
-        typeof session?.policy?.summaryEnabled === "boolean"
-          ? session.policy.summaryEnabled
+        typeof policy.summaryEnabled === "boolean"
+          ? policy.summaryEnabled
           : DEFAULT_SESSION_CONTEXT_POLICY.summaryEnabled,
     },
-    savedAt: session?.savedAt,
-    loadedAt: session?.loadedAt,
-    updatedAt: session?.updatedAt ?? new Date().toISOString(),
+    savedAt: toSafeOptionalString(source.savedAt),
+    loadedAt: toSafeOptionalString(source.loadedAt),
+    updatedAt:
+      typeof source.updatedAt === "string"
+        ? source.updatedAt
+        : new Date().toISOString(),
   };
 }
 
@@ -354,18 +393,35 @@ export class FileSessionStoreAdapter implements SessionStorePort {
       }
 
       const raw = await fsp.readFile(SESSION_FILE, "utf-8");
-      return JSON.parse(raw) as SessionConfig;
+      const parsed = JSON.parse(raw) as unknown;
+      if (
+        parsed === null ||
+        Array.isArray(parsed) ||
+        typeof parsed !== "object"
+      ) {
+        await this.backupCorruptConfigFile();
+        return {};
+      }
+      return parsed as SessionConfig;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== "ENOENT" && fs.existsSync(SESSION_FILE)) {
-        const backupFile = `${SESSION_FILE}.corrupt-${Date.now()}`;
-        try {
-          await fsp.rename(SESSION_FILE, backupFile);
-        } catch {
-          // Keep best-effort fallback; an unreadable file should not break CLI startup.
-        }
+      if (code !== "ENOENT") {
+        await this.backupCorruptConfigFile();
       }
       return {};
+    }
+  }
+
+  private async backupCorruptConfigFile(): Promise<void> {
+    if (!fs.existsSync(SESSION_FILE)) {
+      return;
+    }
+
+    const backupFile = `${SESSION_FILE}.corrupt-${Date.now()}`;
+    try {
+      await fsp.rename(SESSION_FILE, backupFile);
+    } catch {
+      // Keep best-effort fallback; an unreadable file should not break CLI startup.
     }
   }
 }
