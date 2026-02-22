@@ -5,18 +5,42 @@ import {
   LlmClientPort,
   ModelSummary,
 } from "../../../ports/outbound/llm-client.port";
-import { SessionStorePort } from "../../../ports/outbound/session-store.port";
+import {
+  DEFAULT_SESSION_CONTEXT_POLICY,
+  SessionRecord,
+  SessionStorePort,
+} from "../../../ports/outbound/session-store.port";
 import { ChatChunk, ChatMessage } from "../../../shared/types/chat";
 
 class FakeSessionStore implements SessionStorePort {
-  private modelMap = new Map<string, string>();
+  private sessions = new Map<string, SessionRecord>();
 
   async getModel(sessionId: string): Promise<string | undefined> {
-    return this.modelMap.get(sessionId);
+    return this.sessions.get(sessionId)?.model;
   }
 
   async setModel(sessionId: string, model: string): Promise<void> {
-    this.modelMap.set(sessionId, model);
+    const existing = this.sessions.get(sessionId);
+    this.sessions.set(sessionId, {
+      model,
+      messages: existing?.messages ?? [],
+      summary: existing?.summary,
+      policy: existing?.policy ?? { ...DEFAULT_SESSION_CONTEXT_POLICY },
+      savedAt: existing?.savedAt,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  async getSession(sessionId: string): Promise<SessionRecord | undefined> {
+    return this.sessions.get(sessionId);
+  }
+
+  async saveSession(sessionId: string, session: SessionRecord): Promise<void> {
+    this.sessions.set(sessionId, session);
+  }
+
+  async endSession(sessionId: string): Promise<void> {
+    this.sessions.delete(sessionId);
   }
 }
 
@@ -154,5 +178,205 @@ describe("RunChatUseCase", () => {
     }
 
     expect(received).toEqual(["A", "B"]);
+  });
+
+  it("loads context with summary and max-turn window", async () => {
+    const sessionStore = new FakeSessionStore();
+    await sessionStore.saveSession("s-1", {
+      model: "default-model",
+      summary: "older context",
+      policy: { maxTurns: 1, summaryEnabled: false },
+      messages: [
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "a1" },
+        { role: "user", content: "u2" },
+        { role: "assistant", content: "a2" },
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+    const resolver = new ResolveModelUseCase(
+      new FakeConfig("default-model"),
+      sessionStore,
+    );
+    const useCase = new RunChatUseCase(
+      resolver,
+      new FakeLlmClient([{ name: "default-model" }]),
+      sessionStore,
+    );
+
+    const context = await useCase.loadContext("s-1");
+    expect(context.messages).toEqual([
+      {
+        role: "assistant",
+        content: "Context summary (untrusted): older context",
+      },
+      { role: "user", content: "u2" },
+      { role: "assistant", content: "a2" },
+    ]);
+  });
+
+  it("records turn into session history", async () => {
+    const sessionStore = new FakeSessionStore();
+    const resolver = new ResolveModelUseCase(
+      new FakeConfig("default-model"),
+      sessionStore,
+    );
+    const useCase = new RunChatUseCase(
+      resolver,
+      new FakeLlmClient([{ name: "default-model" }]),
+      sessionStore,
+    );
+
+    await useCase.startSession({ sessionId: "s-1" });
+    await useCase.recordTurn("s-1", "hello", "world");
+    const session = await useCase.getSession("s-1");
+    expect(session?.messages).toEqual([
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "world" },
+    ]);
+  });
+
+  it("keeps previous summary when summarizing multiple times", async () => {
+    const sessionStore = new FakeSessionStore();
+    await sessionStore.saveSession("s-1", {
+      model: "default-model",
+      summary: "older-summary",
+      policy: { maxTurns: 1, summaryEnabled: false },
+      messages: [
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "a1" },
+        { role: "user", content: "u2" },
+        { role: "assistant", content: "a2" },
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+    const resolver = new ResolveModelUseCase(
+      new FakeConfig("default-model"),
+      sessionStore,
+    );
+    const useCase = new RunChatUseCase(
+      resolver,
+      new FakeLlmClient([{ name: "default-model" }]),
+      sessionStore,
+    );
+
+    await useCase.summarizeContext("s-1");
+    const session = await useCase.getSession("s-1");
+    expect(session?.summary).toContain("user: u1");
+    expect(session?.summary).toContain("previous: older-summary");
+    expect(session?.messages).toEqual([
+      { role: "user", content: "u2" },
+      { role: "assistant", content: "a2" },
+    ]);
+  });
+
+  it("keeps new summary information even when previous summary is very long", async () => {
+    const sessionStore = new FakeSessionStore();
+    await sessionStore.saveSession("s-1", {
+      model: "default-model",
+      summary: "p".repeat(700),
+      policy: { maxTurns: 1, summaryEnabled: false },
+      messages: [
+        { role: "user", content: "latest-user" },
+        { role: "assistant", content: "latest-assistant" },
+        { role: "user", content: "kept-user" },
+        { role: "assistant", content: "kept-assistant" },
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+    const resolver = new ResolveModelUseCase(
+      new FakeConfig("default-model"),
+      sessionStore,
+    );
+    const useCase = new RunChatUseCase(
+      resolver,
+      new FakeLlmClient([{ name: "default-model" }]),
+      sessionStore,
+    );
+
+    await useCase.summarizeContext("s-1");
+    const session = await useCase.getSession("s-1");
+    expect(session?.summary).toContain("latest-user");
+    expect(session?.summary).toContain("previous:");
+  });
+
+  it("throws when saving a non-existing session", async () => {
+    const sessionStore = new FakeSessionStore();
+    const resolver = new ResolveModelUseCase(
+      new FakeConfig("default-model"),
+      sessionStore,
+    );
+    const useCase = new RunChatUseCase(
+      resolver,
+      new FakeLlmClient([{ name: "default-model" }]),
+      sessionStore,
+    );
+
+    await expect(useCase.saveSession("missing")).rejects.toThrow(
+      "Session 'missing' was not found.",
+    );
+  });
+
+  it("updates loaded metadata and returns restoration summary", async () => {
+    const sessionStore = new FakeSessionStore();
+    await sessionStore.saveSession("s-1", {
+      model: "default-model",
+      summary: "kept",
+      policy: { maxTurns: 2, summaryEnabled: false },
+      messages: [
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "a1" },
+      ],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const resolver = new ResolveModelUseCase(
+      new FakeConfig("default-model"),
+      sessionStore,
+    );
+    const useCase = new RunChatUseCase(
+      resolver,
+      new FakeLlmClient([{ name: "default-model" }]),
+      sessionStore,
+    );
+
+    const loaded = await useCase.loadSession("s-1");
+    expect(loaded.restoredMessageCount).toBe(2);
+    expect(loaded.restoredSummary).toBe(true);
+    expect(loaded.session.loadedAt).toEqual(expect.any(String));
+
+    const persisted = await sessionStore.getSession("s-1");
+    expect(persisted?.loadedAt).toEqual(expect.any(String));
+  });
+
+  it("clears summary when context is cleared with keep-turns", async () => {
+    const sessionStore = new FakeSessionStore();
+    await sessionStore.saveSession("s-1", {
+      model: "default-model",
+      summary: "should be removed",
+      policy: { maxTurns: 2, summaryEnabled: false },
+      messages: [
+        { role: "user", content: "u1" },
+        { role: "assistant", content: "a1" },
+        { role: "user", content: "u2" },
+        { role: "assistant", content: "a2" },
+      ],
+      updatedAt: new Date().toISOString(),
+    });
+    const resolver = new ResolveModelUseCase(
+      new FakeConfig("default-model"),
+      sessionStore,
+    );
+    const useCase = new RunChatUseCase(
+      resolver,
+      new FakeLlmClient([{ name: "default-model" }]),
+      sessionStore,
+    );
+
+    const cleared = await useCase.clearContext("s-1", 1);
+    expect(cleared.summary).toBeUndefined();
+    expect(cleared.messages).toEqual([
+      { role: "user", content: "u2" },
+      { role: "assistant", content: "a2" },
+    ]);
   });
 });

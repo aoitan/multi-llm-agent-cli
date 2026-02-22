@@ -96,4 +96,19 @@ describe("chat-event-logger", () => {
     expect(chmodSpy).toHaveBeenCalledWith(customLogFile, 0o600);
     chmodSpy.mockRestore();
   });
+
+  it("writes session/context events without model metadata", async () => {
+    const logFile = path.join(tempDir, "chat-events.jsonl");
+    process.env.CHAT_EVENT_LOG_FILE = logFile;
+
+    await writeChatEventLog({
+      timestamp: "2026-02-15T00:00:00.000Z",
+      session_id: "s-1",
+      event_type: "context_clear",
+    });
+
+    const current = await fsp.readFile(logFile, "utf-8");
+    expect(current).toContain('"event_type":"context_clear"');
+    expect(current).toContain('"session_id":"s-1"');
+  });
 });

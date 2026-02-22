@@ -12,6 +12,13 @@ function createMockUseCase(startModel = "test-model") {
       yield "hello";
       yield " world";
     }),
+    loadContext: jest
+      .fn()
+      .mockResolvedValue({
+        messages: [],
+        policy: { maxTurns: 10, summaryEnabled: false },
+      }),
+    recordTurn: jest.fn().mockResolvedValue(undefined),
   } as unknown as RunChatUseCase;
 }
 
@@ -62,6 +69,13 @@ describe("F-001 CLI Chat acceptance", () => {
         model: "missing",
         candidates: ["model-a"],
       }),
+      loadContext: jest
+        .fn()
+        .mockResolvedValue({
+          messages: [],
+          policy: { maxTurns: 10, summaryEnabled: false },
+        }),
+      recordTurn: jest.fn().mockResolvedValue(undefined),
       runTurn: jest.fn(),
     } as unknown as RunChatUseCase;
 

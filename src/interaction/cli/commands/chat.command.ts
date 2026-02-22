@@ -39,7 +39,6 @@ export async function runChatCommand(
     return;
   }
 
-  const messages: ChatMessage[] = [];
   const safeLog = async (
     ...args: Parameters<ChatEventLogger>
   ): Promise<void> => {
@@ -59,11 +58,21 @@ export async function runChatCommand(
   });
 
   console.log(`\n--- Chat with ${start.model} (${start.source}) ---\n`);
+  const initialContext = await deps.useCase.loadContext(sessionId);
+  console.log(
+    `Context policy: keep ${initialContext.policy.maxTurns} turn(s), summary ${
+      initialContext.policy.summaryEnabled ? "on" : "off"
+    }.`,
+  );
   console.log("Type /exit or /quit to end the chat.");
 
   const streamOneTurn = async (prompt: string): Promise<void> => {
     const startedAt = Date.now();
-    messages.push({ role: "user", content: prompt });
+    const sessionContext = await deps.useCase.loadContext(sessionId);
+    const messages: ChatMessage[] = [
+      ...sessionContext.messages,
+      { role: "user", content: prompt },
+    ];
     console.log("Generating...");
     process.stdout.write("AI: ");
 
@@ -76,7 +85,7 @@ export async function runChatCommand(
 
       process.stdout.write("\n");
       console.log("Done.");
-      messages.push({ role: "assistant", content: response });
+      await deps.useCase.recordTurn(sessionId, prompt, response);
 
       await safeLog({
         timestamp: new Date().toISOString(),

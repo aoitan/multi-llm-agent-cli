@@ -10,9 +10,19 @@ const DEFAULT_MAX_LOG_BYTES = 1024 * 1024;
 export interface ChatEventLogEntry {
   timestamp: string;
   session_id: string;
-  event_type: "session_start" | "turn_completed" | "turn_failed";
-  model: string;
-  resolution_source: ModelResolutionSource;
+  event_type:
+    | "session_start"
+    | "session_save"
+    | "session_load"
+    | "session_end"
+    | "context_show"
+    | "context_set"
+    | "context_clear"
+    | "context_summarize"
+    | "turn_completed"
+    | "turn_failed";
+  model?: string;
+  resolution_source?: ModelResolutionSource;
   user_input?: string;
   assistant_response?: string;
   duration_ms?: number;
