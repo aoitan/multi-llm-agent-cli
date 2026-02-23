@@ -1,5 +1,6 @@
 import { DispatchTaskUseCase } from "../../../application/orchestration/dispatch-task.usecase";
 import { RunRoleGraphUseCase } from "../../../application/orchestration/run-role-graph.usecase";
+import { RoleName } from "../../../domain/orchestration/entities/role";
 import { RoleDelegationEvent } from "../../../shared/types/events";
 
 describe("F-102 Role Delegation acceptance", () => {
@@ -12,7 +13,7 @@ describe("F-102 Role Delegation acceptance", () => {
     const auditEvents: RoleDelegationEvent[] = [];
     const useCase = new RunRoleGraphUseCase(
       dispatch,
-      async (role: string, prompt: string) => `${role}:${prompt}`,
+      async (role: RoleName, prompt: string) => `${role}:${prompt}`,
       async (event) => {
         auditEvents.push(event);
       },
@@ -27,9 +28,13 @@ describe("F-102 Role Delegation acceptance", () => {
     expect(
       childTasks.every((task) => task.parentTaskId === result.rootTaskId),
     ).toBe(true);
-    expect(auditEvents).toHaveLength(3);
+    expect(auditEvents).toHaveLength(4);
+    const childAuditEvents = auditEvents.filter(
+      (event) => event.parent_task_id === result.rootTaskId,
+    );
+    expect(childAuditEvents).toHaveLength(3);
     expect(
-      auditEvents.every(
+      childAuditEvents.every(
         (event) =>
           event.parent_task_id === result.rootTaskId &&
           event.result_at !== undefined &&
@@ -47,7 +52,7 @@ describe("F-102 Role Delegation acceptance", () => {
     const auditEvents: RoleDelegationEvent[] = [];
     const useCase = new RunRoleGraphUseCase(
       dispatch,
-      async (role: string, prompt: string) => {
+      async (role: RoleName, prompt: string) => {
         if (role === "reviewer") {
           throw new Error("policy violation");
         }

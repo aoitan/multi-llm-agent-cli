@@ -30,7 +30,7 @@ function tokenizeArithmeticExpression(expression: string): ArithmeticToken[] {
         end += 1;
       }
       const raw = expression.slice(index, end);
-      if (!/^\d+(\.\d+)?$/.test(raw)) {
+      if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(raw)) {
         throw new Error(`Invalid numeric literal: ${raw}`);
       }
       tokens.push({ kind: "number", value: Number(raw) });
@@ -319,18 +319,20 @@ export class McpServer {
               this.tasks.get(taskId)!.status = "completed";
             })
             .catch((error) => {
+              const errorMessage =
+                error instanceof Error ? error.message : String(error);
               logger.error(`Orchestration failed for task ${taskId}:`, error);
               this.sendError(
                 ws,
                 request.id,
                 -32000,
-                `Orchestration failed: ${error.message}`,
+                `Orchestration failed: ${errorMessage}`,
               );
               this.tasks.get(taskId)!.status = "failed";
               this.sendNotification(ws, "task_status_update", {
                 taskId,
                 status: "failed",
-                message: `Orchestration failed: ${error.message}`,
+                message: `Orchestration failed: ${errorMessage}`,
               });
             });
           break;

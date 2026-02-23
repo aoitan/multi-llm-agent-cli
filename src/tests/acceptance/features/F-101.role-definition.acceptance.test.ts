@@ -1,5 +1,6 @@
 import { DispatchTaskUseCase } from "../../../application/orchestration/dispatch-task.usecase";
 import { RunRoleGraphUseCase } from "../../../application/orchestration/run-role-graph.usecase";
+import { RoleName } from "../../../domain/orchestration/entities/role";
 import { listRoleDefinitions } from "../../../domain/orchestration/entities/role";
 
 describe("F-101 Role Definition acceptance", () => {
@@ -18,7 +19,7 @@ describe("F-101 Role Definition acceptance", () => {
       () => ids.shift() ?? "task-extra",
     );
     const runRole = jest.fn(
-      async (role: string, prompt: string) => `${role}:${prompt}`,
+      async (role: RoleName, prompt: string) => `${role}:${prompt}`,
     );
     const useCase = new RunRoleGraphUseCase(dispatch, runRole);
 

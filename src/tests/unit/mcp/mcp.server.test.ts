@@ -7,6 +7,8 @@ describe("McpServer arithmetic evaluator", () => {
     expect(evaluateArithmeticExpression("7 / 2")).toBe(3.5);
     expect(evaluateArithmeticExpression("-3 + 5")).toBe(2);
     expect(evaluateArithmeticExpression("-(1+2)")).toBe(-3);
+    expect(evaluateArithmeticExpression(".5 + .5")).toBe(1);
+    expect(evaluateArithmeticExpression("5. + 0.5")).toBe(5.5);
   });
 
   it("rejects unsupported characters and code injection payloads", () => {

@@ -1,5 +1,6 @@
 import { DispatchTaskUseCase } from "../../../application/orchestration/dispatch-task.usecase";
 import { RunRoleGraphUseCase } from "../../../application/orchestration/run-role-graph.usecase";
+import { RoleName } from "../../../domain/orchestration/entities/role";
 
 describe("RunRoleGraphUseCase", () => {
   it("delegates tasks across developer/reviewer/documenter and returns final output", async () => {
@@ -18,7 +19,7 @@ describe("RunRoleGraphUseCase", () => {
       () => times.shift() ?? "2026-02-22T01:00:09.000Z",
       () => ids.shift() ?? "task-extra",
     );
-    const runRole = jest.fn(async (role: string, prompt: string) => {
+    const runRole = jest.fn(async (role: RoleName, prompt: string) => {
       if (role === "developer") {
         return `dev:${prompt}`;
       }
@@ -60,7 +61,7 @@ describe("RunRoleGraphUseCase", () => {
       () => "2026-02-22T01:10:00.000Z",
       () => ids.shift() ?? "task-extra",
     );
-    const runRole = jest.fn(async (role: string) => {
+    const runRole = jest.fn(async (role: RoleName) => {
       if (role === "reviewer") {
         throw new Error("review failed");
       }
@@ -83,7 +84,7 @@ describe("RunRoleGraphUseCase", () => {
       () => ids.shift() ?? "task-extra",
     );
     const onEvent = jest.fn();
-    const runRole = jest.fn(async (role: string) => {
+    const runRole = jest.fn(async (role: RoleName) => {
       if (role === "coordinator") {
         throw new Error("coordinator failed");
       }
@@ -111,7 +112,7 @@ describe("RunRoleGraphUseCase", () => {
       () => "2026-02-22T01:20:00.000Z",
       () => ids.shift() ?? "task-extra",
     );
-    const runRole = jest.fn(async (role: string, prompt: string) => {
+    const runRole = jest.fn(async (role: RoleName, prompt: string) => {
       return `${role}:${prompt}`;
     });
     const onEvent = jest.fn();
@@ -119,7 +120,7 @@ describe("RunRoleGraphUseCase", () => {
 
     await useCase.execute("summarize");
 
-    expect(onEvent).toHaveBeenCalledTimes(3);
+    expect(onEvent).toHaveBeenCalledTimes(4);
     expect(onEvent).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
@@ -128,10 +129,10 @@ describe("RunRoleGraphUseCase", () => {
       }),
     );
     expect(onEvent).toHaveBeenNthCalledWith(
-      3,
+      4,
       expect.objectContaining({
         event_type: "role_delegation",
-        delegated_role: "documenter",
+        delegated_role: "coordinator",
       }),
     );
   });
@@ -143,7 +144,7 @@ describe("RunRoleGraphUseCase", () => {
       () => ids.shift() ?? "task-extra",
     );
     const runRole = jest.fn(
-      async (role: string, prompt: string) => `${role}:${prompt}`,
+      async (role: RoleName, prompt: string) => `${role}:${prompt}`,
     );
     const onEvent = jest.fn().mockRejectedValue(new Error("socket closed"));
     const useCase = new RunRoleGraphUseCase(dispatch, runRole, onEvent);
@@ -151,6 +152,6 @@ describe("RunRoleGraphUseCase", () => {
     const result = await useCase.execute("summarize");
 
     expect(result.finalResponse).toContain("documenter:");
-    expect(onEvent).toHaveBeenCalledTimes(3);
+    expect(onEvent).toHaveBeenCalledTimes(4);
   });
 });

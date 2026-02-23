@@ -77,7 +77,11 @@ export class RunRoleGraphUseCase {
         finalResponse,
       );
       await this.pushEvent(events, this.buildEvent(documenterCompleted));
-      this.dispatchTask.completeTask(rootTask.taskId, finalResponse);
+      const rootCompleted = this.dispatchTask.completeTask(
+        rootTask.taskId,
+        finalResponse,
+      );
+      await this.pushEvent(events, this.buildEvent(rootCompleted));
 
       return {
         rootTaskId: rootTask.taskId,
