@@ -2,6 +2,7 @@ import { promises as fsp } from "fs";
 import * as os from "os";
 import * as path from "path";
 import { ModelResolutionSource } from "../../shared/types/chat";
+import { RoleName } from "../../domain/orchestration/entities/role";
 
 const DEFAULT_LOG_DIR = path.join(os.homedir(), ".multi-llm-agent-cli", "logs");
 const DEFAULT_LOG_FILE = "chat-events.jsonl";
@@ -20,13 +21,20 @@ export interface ChatEventLogEntry {
     | "context_clear"
     | "context_summarize"
     | "turn_completed"
-    | "turn_failed";
+    | "turn_failed"
+    | "role_delegation";
   model?: string;
   resolution_source?: ModelResolutionSource;
   user_input?: string;
   assistant_response?: string;
   duration_ms?: number;
   error_message?: string;
+  parent_task_id?: string;
+  child_task_id?: string;
+  delegated_role?: RoleName;
+  delegated_at?: string;
+  result_at?: string;
+  failure_reason?: string;
 }
 
 export type ChatEventLogger = (entry: ChatEventLogEntry) => Promise<void>;

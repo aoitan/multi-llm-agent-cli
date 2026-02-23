@@ -50,6 +50,17 @@ multi-llm-agent-cli use <model_name>
   - `clear --keep-turns N`: 履歴を破棄（最新Nターンのみ保持、既存summaryも破棄）
   - `summarize`: 古い履歴を要約して圧縮
 
+### ロール実行モデル (MVP, F-101/F-102)
+
+- `MCP orchestrate/task` 実行時に、論理ロール `coordinator/developer/reviewer/documenter` を単一 Control Node 内で順次実行します。
+- 委譲表示:
+  - `task_status_update` 通知で `delegatedRole`, `parentTaskId`, `childTaskId` を確認できます。
+- 監査ログ:
+  - `event_type=role_delegation` として `parent_task_id`, `child_task_id`, `delegated_role`, `delegated_at`, `result_at`, `failure_reason` を保存します。
+- 制約 (MVP):
+  - リモートAgent常駐やノード間通信は未対応です。
+  - 並列ロール実行（F-103）は未対応です。
+
 ## 開発フック
 
 コミット前とプッシュ前に品質チェックを強制するため、Git hookを利用します。
