@@ -78,6 +78,7 @@ export class RunRoleGraphUseCase {
         maxCycleCount,
         cycleCounts,
         ["start->coordinator"],
+        // Coordinator failures should preserve the original cause for callers.
         false,
         abortController.signal,
       );
@@ -118,15 +119,7 @@ export class RunRoleGraphUseCase {
             const message =
               error instanceof Error ? error.message : String(error);
             const failedTask = this.dispatchTask.failTask(task.taskId, message);
-            if (error instanceof RetryLimitExceededError) {
-              failedTask.retryCount = error.retryCount;
-              failedTask.loopTrigger = "retry_limit";
-              failedTask.loopThreshold = error.threshold;
-            } else if (error instanceof LoopThresholdExceededError) {
-              failedTask.loopTrigger = "cycle_limit";
-              failedTask.loopThreshold = error.threshold;
-              failedTask.loopRecentHistory = error.recentHistory;
-            }
+            this.applyFailureMetadata(failedTask, error);
             await this.pushEvent(events, this.buildEvent(failedTask));
             throw error;
           }
@@ -169,23 +162,15 @@ export class RunRoleGraphUseCase {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const runningChild = allTasks
+      const runningChildren = allTasks
         .filter((task) => task.parentTaskId === rootTask.taskId)
-        .find((task) => task.status === "running");
-      if (runningChild) {
+        .filter((task) => task.status === "running");
+      for (const runningChild of runningChildren) {
         const failedTask = this.dispatchTask.failTask(
           runningChild.taskId,
           message,
         );
-        if (error instanceof RetryLimitExceededError) {
-          failedTask.retryCount = error.retryCount;
-          failedTask.loopTrigger = "retry_limit";
-          failedTask.loopThreshold = error.threshold;
-        } else if (error instanceof LoopThresholdExceededError) {
-          failedTask.loopTrigger = "cycle_limit";
-          failedTask.loopThreshold = error.threshold;
-          failedTask.loopRecentHistory = error.recentHistory;
-        }
+        this.applyFailureMetadata(failedTask, error);
         await this.pushEvent(events, this.buildEvent(failedTask));
       }
       const failedRoot = this.dispatchTask.failTask(rootTask.taskId, message);
@@ -263,10 +248,7 @@ export class RunRoleGraphUseCase {
         if (signal?.aborted) {
           throw error;
         }
-        if (
-          attempt === maxRetriesPerRole &&
-          (!wrapRetryLimitError || maxRetriesPerRole === 0)
-        ) {
+        if (attempt === maxRetriesPerRole && !wrapRetryLimitError) {
           throw error;
         }
         if (attempt === maxRetriesPerRole) {
@@ -282,6 +264,20 @@ export class RunRoleGraphUseCase {
       }
     }
     throw new Error("Unreachable");
+  }
+
+  private applyFailureMetadata(task: RoleTask, error: unknown): void {
+    if (error instanceof RetryLimitExceededError) {
+      task.retryCount = error.retryCount;
+      task.loopTrigger = "retry_limit";
+      task.loopThreshold = error.threshold;
+      return;
+    }
+    if (error instanceof LoopThresholdExceededError) {
+      task.loopTrigger = "cycle_limit";
+      task.loopThreshold = error.threshold;
+      task.loopRecentHistory = error.recentHistory;
+    }
   }
 
   private assertCycleLimit(

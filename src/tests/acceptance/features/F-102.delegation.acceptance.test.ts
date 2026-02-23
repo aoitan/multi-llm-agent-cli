@@ -74,7 +74,10 @@ describe("F-102 Role Delegation acceptance", () => {
       expect.objectContaining({
         delegated_role: "reviewer",
         status: "failed",
-        failure_reason: "policy violation",
+        failure_reason:
+          "Retry limit exceeded: role=reviewer, retries=0, threshold=0, cause=policy violation",
+        loop_trigger: "retry_limit",
+        retry_count: 0,
       }),
     );
     expect(

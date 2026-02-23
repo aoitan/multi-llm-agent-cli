@@ -145,6 +145,10 @@ export class OllamaClient {
         const decoder = new TextDecoder("utf-8");
         let buffer = "";
         try {
+          if (signal?.aborted) {
+            onAbort();
+            throw new Error("Ollama request was aborted");
+          }
           for await (const chunk of readableStream) {
             if (signal?.aborted) {
               throw new Error("Ollama request was aborted");
