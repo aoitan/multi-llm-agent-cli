@@ -1,7 +1,39 @@
 import { DispatchTaskUseCase } from "./dispatch-task.usecase";
+import { createHash } from "crypto";
 import { RoleDelegationEvent } from "../../shared/types/events";
 import { RoleTask } from "../../domain/orchestration/entities/task";
 import { RoleName } from "../../domain/orchestration/entities/role";
+
+class LoopThresholdExceededError extends Error {
+  constructor(
+    readonly role: RoleName,
+    readonly threshold: number,
+    readonly recentHistory: string[],
+  ) {
+    super(`Loop threshold exceeded: role=${role}, threshold=${threshold}`);
+    this.name = "LoopThresholdExceededError";
+  }
+}
+
+class RetryLimitExceededError extends Error {
+  constructor(
+    readonly role: RoleName,
+    readonly retryCount: number,
+    readonly threshold: number,
+    readonly causeMessage: string,
+  ) {
+    super(
+      `Retry limit exceeded: role=${role}, retries=${retryCount}, threshold=${threshold}, cause=${causeMessage}`,
+    );
+    this.name = "RetryLimitExceededError";
+  }
+}
+
+export interface RunRoleGraphOptions {
+  maxParallelRoles?: number;
+  maxRetriesPerRole?: number;
+  maxCycleCount?: number;
+}
 
 export interface RunRoleGraphResult {
   rootTaskId: string;
@@ -16,13 +48,20 @@ export class RunRoleGraphUseCase {
     private readonly runRole: (
       role: RoleName,
       prompt: string,
+      signal?: AbortSignal,
     ) => Promise<string>,
     private readonly onEvent?: (
       event: RoleDelegationEvent,
     ) => void | Promise<void>,
+    private readonly options: RunRoleGraphOptions = {},
   ) {}
 
   async execute(userPrompt: string): Promise<RunRoleGraphResult> {
+    const maxParallelRoles = Math.max(1, this.options.maxParallelRoles ?? 2);
+    const maxRetriesPerRole = Math.max(0, this.options.maxRetriesPerRole ?? 0);
+    const maxCycleCount = Math.max(1, this.options.maxCycleCount ?? 3);
+    const cycleCounts = new Map<string, number>();
+    const abortController = new AbortController();
     const rootTask = this.dispatchTask.createRootTask(
       "coordinator",
       userPrompt,
@@ -32,46 +71,85 @@ export class RunRoleGraphUseCase {
     const allTasks: RoleTask[] = [rootTask];
 
     try {
-      const coordinatorOutput = await this.runRole("coordinator", userPrompt);
-      const developerTask = this.dispatchTask.delegateTask(
-        rootTask.taskId,
-        "developer",
-        coordinatorOutput,
+      const coordinatorOutput = await this.runRoleWithRetryAndCycleGuard(
+        "coordinator",
+        userPrompt,
+        maxRetriesPerRole,
+        maxCycleCount,
+        cycleCounts,
+        ["start->coordinator"],
+        false,
+        abortController.signal,
       );
-      allTasks.push(developerTask);
-      this.dispatchTask.markTaskRunning(developerTask.taskId);
-      const developerOutput = await this.runRole(
-        "developer",
-        coordinatorOutput,
+      const delegatedRoles: RoleName[] = ["developer", "reviewer"];
+      const delegatedTasks = delegatedRoles.map((role) =>
+        this.dispatchTask.delegateTask(
+          rootTask.taskId,
+          role,
+          coordinatorOutput,
+        ),
       );
-      const developerCompleted = this.dispatchTask.completeTask(
-        developerTask.taskId,
-        developerOutput,
-      );
-      await this.pushEvent(events, this.buildEvent(developerCompleted));
+      allTasks.push(...delegatedTasks);
 
-      const reviewerTask = this.dispatchTask.delegateTask(
-        rootTask.taskId,
-        "reviewer",
-        developerOutput,
+      const delegatedOutputs = await this.executeInPool(
+        delegatedTasks,
+        maxParallelRoles,
+        abortController,
+        async (task) => {
+          this.dispatchTask.markTaskRunning(task.taskId);
+          try {
+            const output = await this.runRoleWithRetryAndCycleGuard(
+              task.role,
+              task.prompt,
+              maxRetriesPerRole,
+              maxCycleCount,
+              cycleCounts,
+              [`coordinator->${task.role}`],
+              true,
+              abortController.signal,
+            );
+            const completed = this.dispatchTask.completeTask(
+              task.taskId,
+              output,
+            );
+            await this.pushEvent(events, this.buildEvent(completed));
+            return output;
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : String(error);
+            const failedTask = this.dispatchTask.failTask(task.taskId, message);
+            if (error instanceof RetryLimitExceededError) {
+              failedTask.retryCount = error.retryCount;
+              failedTask.loopTrigger = "retry_limit";
+              failedTask.loopThreshold = error.threshold;
+            } else if (error instanceof LoopThresholdExceededError) {
+              failedTask.loopTrigger = "cycle_limit";
+              failedTask.loopThreshold = error.threshold;
+              failedTask.loopRecentHistory = error.recentHistory;
+            }
+            await this.pushEvent(events, this.buildEvent(failedTask));
+            throw error;
+          }
+        },
       );
-      allTasks.push(reviewerTask);
-      this.dispatchTask.markTaskRunning(reviewerTask.taskId);
-      const reviewerOutput = await this.runRole("reviewer", developerOutput);
-      const reviewerCompleted = this.dispatchTask.completeTask(
-        reviewerTask.taskId,
-        reviewerOutput,
-      );
-      await this.pushEvent(events, this.buildEvent(reviewerCompleted));
 
       const documenterTask = this.dispatchTask.delegateTask(
         rootTask.taskId,
         "documenter",
-        reviewerOutput,
+        this.buildDocumenterPrompt(delegatedRoles, delegatedOutputs),
       );
       allTasks.push(documenterTask);
       this.dispatchTask.markTaskRunning(documenterTask.taskId);
-      const finalResponse = await this.runRole("documenter", reviewerOutput);
+      const finalResponse = await this.runRoleWithRetryAndCycleGuard(
+        "documenter",
+        documenterTask.prompt,
+        maxRetriesPerRole,
+        maxCycleCount,
+        cycleCounts,
+        ["coordinator->documenter"],
+        true,
+        abortController.signal,
+      );
       const documenterCompleted = this.dispatchTask.completeTask(
         documenterTask.taskId,
         finalResponse,
@@ -99,14 +177,135 @@ export class RunRoleGraphUseCase {
           runningChild.taskId,
           message,
         );
+        if (error instanceof RetryLimitExceededError) {
+          failedTask.retryCount = error.retryCount;
+          failedTask.loopTrigger = "retry_limit";
+          failedTask.loopThreshold = error.threshold;
+        } else if (error instanceof LoopThresholdExceededError) {
+          failedTask.loopTrigger = "cycle_limit";
+          failedTask.loopThreshold = error.threshold;
+          failedTask.loopRecentHistory = error.recentHistory;
+        }
         await this.pushEvent(events, this.buildEvent(failedTask));
       }
       const failedRoot = this.dispatchTask.failTask(rootTask.taskId, message);
-      if (!runningChild) {
-        await this.pushEvent(events, this.buildEvent(failedRoot));
-      }
+      await this.pushEvent(events, this.buildEvent(failedRoot));
       throw error;
     }
+  }
+
+  private buildDocumenterPrompt(
+    roles: RoleName[],
+    outputs: Map<string, string>,
+  ): string {
+    return roles
+      .map((role) => `[${role}]\n${outputs.get(role) ?? ""}`)
+      .join("\n\n");
+  }
+
+  private async executeInPool(
+    tasks: RoleTask[],
+    concurrency: number,
+    abortController: AbortController,
+    worker: (task: RoleTask) => Promise<string>,
+  ): Promise<Map<string, string>> {
+    const outputMap = new Map<string, string>();
+    let firstError: unknown;
+    let cursor = 0;
+    let aborted = false;
+    const workers = Array.from(
+      { length: Math.min(concurrency, tasks.length) },
+      async () => {
+        while (!aborted && cursor < tasks.length) {
+          const index = cursor;
+          cursor += 1;
+          const task = tasks[index];
+          if (!task) {
+            continue;
+          }
+          try {
+            outputMap.set(task.role, await worker(task));
+          } catch (error) {
+            if (!firstError) {
+              firstError = error;
+            }
+            aborted = true;
+            abortController.abort();
+          }
+        }
+      },
+    );
+    await Promise.all(workers);
+    if (firstError) {
+      throw firstError;
+    }
+    return outputMap;
+  }
+
+  private async runRoleWithRetryAndCycleGuard(
+    role: RoleName,
+    prompt: string,
+    maxRetriesPerRole: number,
+    maxCycleCount: number,
+    cycleCounts: Map<string, number>,
+    transitionHistory: string[],
+    wrapRetryLimitError: boolean,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    this.assertCycleLimit(role, transitionHistory, maxCycleCount, cycleCounts);
+    for (let attempt = 0; attempt <= maxRetriesPerRole; attempt += 1) {
+      if (signal?.aborted) {
+        throw new Error("Execution aborted");
+      }
+      try {
+        return await this.runRole(role, prompt, signal);
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        if (
+          attempt === maxRetriesPerRole &&
+          (!wrapRetryLimitError || maxRetriesPerRole === 0)
+        ) {
+          throw error;
+        }
+        if (attempt === maxRetriesPerRole) {
+          const causeMessage =
+            error instanceof Error ? error.message : String(error);
+          throw new RetryLimitExceededError(
+            role,
+            attempt,
+            maxRetriesPerRole,
+            causeMessage,
+          );
+        }
+      }
+    }
+    throw new Error("Unreachable");
+  }
+
+  private assertCycleLimit(
+    role: RoleName,
+    transitionHistory: string[],
+    maxCycleCount: number,
+    cycleCounts: Map<string, number>,
+  ): void {
+    const key = this.createCycleHistoryKey(transitionHistory);
+    const count = (cycleCounts.get(key) ?? 0) + 1;
+    cycleCounts.set(key, count);
+    if (count > maxCycleCount) {
+      throw new LoopThresholdExceededError(role, maxCycleCount, [
+        ...transitionHistory,
+      ]);
+    }
+  }
+
+  private createCycleHistoryKey(transitionHistory: string[]): string {
+    const digest = createHash("sha256")
+      .update(transitionHistory.join("|"))
+      .digest("hex")
+      .slice(0, 16);
+    return `path#${digest}`;
   }
 
   private async pushEvent(
@@ -134,6 +333,10 @@ export class RunRoleGraphUseCase {
       delegated_at: task.delegatedAt,
       result_at: task.resultAt,
       failure_reason: task.failureReason,
+      retry_count: task.retryCount,
+      loop_trigger: task.loopTrigger,
+      loop_threshold: task.loopThreshold,
+      loop_recent_history: task.loopRecentHistory,
     };
   }
 }

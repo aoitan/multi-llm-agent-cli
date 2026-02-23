@@ -11,5 +11,9 @@ export interface RoleTask {
   delegatedAt: string;
   resultAt?: string;
   failureReason?: string;
+  retryCount?: number;
+  loopTrigger?: "retry_limit" | "cycle_limit";
+  loopThreshold?: number;
+  loopRecentHistory?: string[];
   output?: string;
 }

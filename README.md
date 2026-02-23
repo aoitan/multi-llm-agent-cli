@@ -50,16 +50,22 @@ multi-llm-agent-cli use <model_name>
   - `clear --keep-turns N`: 履歴を破棄（最新Nターンのみ保持、既存summaryも破棄）
   - `summarize`: 古い履歴を要約して圧縮
 
-### ロール実行モデル (MVP, F-101/F-102)
+### ロール実行モデル (MVP, F-101/F-105)
 
-- `MCP orchestrate/task` 実行時に、論理ロール `coordinator/developer/reviewer/documenter` を単一 Control Node 内で順次実行します。
+- `MCP orchestrate/task` 実行時に、論理ロール `coordinator/developer/reviewer/documenter` を単一 Control Node 内で実行します。
+- 協調実行:
+  - `coordinator` の出力を基に `developer` と `reviewer` を並行実行し、`documenter` が最終応答を生成します。
 - 委譲表示:
-  - `task_status_update` 通知で `delegatedRole`, `parentTaskId`, `childTaskId` を確認できます。
+  - `task_status_update` 通知で `delegatedRole`, `parentTaskId`, `childTaskId`, `durationMs` を確認できます。
 - 監査ログ:
   - `event_type=role_delegation` として `parent_task_id`, `child_task_id`, `delegated_role`, `delegated_at`, `result_at`, `failure_reason` を保存します。
+  - 停止制御メタデータとして `retry_count`, `loop_trigger`, `loop_threshold`, `loop_recent_history` を保存します。
+- 停止制御 (F-105):
+  - 再試行上限 (`maxRetriesPerRole`) と再循環上限 (`maxCycleCount`) を超過した場合、自動停止します。
+  - 停止時は失敗理由と閾値が通知・監査ログに出力されます。
 - 制約 (MVP):
   - リモートAgent常駐やノード間通信は未対応です。
-  - 並列ロール実行（F-103）は未対応です。
+  - 分散ジョブスケジューラや永続キューは未対応です。
 
 ## 開発フック
 

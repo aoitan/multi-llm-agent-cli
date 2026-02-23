@@ -35,6 +35,10 @@ export interface ChatEventLogEntry {
   delegated_at?: string;
   result_at?: string;
   failure_reason?: string;
+  retry_count?: number;
+  loop_trigger?: "retry_limit" | "cycle_limit";
+  loop_threshold?: number;
+  loop_recent_history?: string[];
 }
 
 export type ChatEventLogger = (entry: ChatEventLogEntry) => Promise<void>;
@@ -124,6 +128,9 @@ export function sanitizeChatEventLogEntry(
     assistant_response: entry.assistant_response
       ? maskSensitiveText(entry.assistant_response)
       : entry.assistant_response,
+    loop_recent_history: entry.loop_recent_history?.map((item) =>
+      maskSensitiveText(item),
+    ),
   };
 }
 
