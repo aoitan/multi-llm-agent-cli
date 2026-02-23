@@ -111,4 +111,26 @@ describe("chat-event-logger", () => {
     expect(current).toContain('"event_type":"context_clear"');
     expect(current).toContain('"session_id":"s-1"');
   });
+
+  it("writes role delegation events with parent/child and timing fields", async () => {
+    const logFile = path.join(tempDir, "chat-events.jsonl");
+    process.env.CHAT_EVENT_LOG_FILE = logFile;
+
+    await writeChatEventLog({
+      timestamp: "2026-02-22T02:30:00.000Z",
+      session_id: "task-root",
+      event_type: "role_delegation",
+      parent_task_id: "task-root",
+      child_task_id: "task-dev",
+      delegated_role: "developer",
+      delegated_at: "2026-02-22T02:30:00.000Z",
+      result_at: "2026-02-22T02:30:01.000Z",
+    });
+
+    const current = await fsp.readFile(logFile, "utf-8");
+    expect(current).toContain('"event_type":"role_delegation"');
+    expect(current).toContain('"parent_task_id":"task-root"');
+    expect(current).toContain('"child_task_id":"task-dev"');
+    expect(current).toContain('"delegated_role":"developer"');
+  });
 });

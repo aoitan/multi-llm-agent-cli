@@ -1,102 +1,104 @@
-# Implementation Plan: Issue #38 S1.3 セッション・コンテキスト
+# Implementation Plan: Issue #39 S2.1 ロール実行モデル
 
 ## 1. 概要とゴール (Summary & Goal)
 
 - **Must**:
-  - `session start/save/load/end` を CLI から実行できる。
-  - セッション保存後、`load` で会話文脈（最低: モデル設定 + 会話履歴）が再利用できる。
-  - コンテキスト管理として「履歴保持」「明示破棄」「最小要約圧縮」をユーザー操作で制御できる。
-  - チャット実行時にコンテキスト方針（保持件数、圧縮有無）を確認できる。
-  - F-004/F-005 の DoD を満たす回帰テストを追加する。
+  - 論理ロール `coordinator/developer/reviewer/documenter` を定義し、実行時に参照できる。
+  - 親タスクIDと子タスクIDの関係を追跡できる。
+  - Control Node 内でロール委譲を実行し、どのロールへ委譲したかを表示・ログ出力できる。
+  - F-101/F-102 の DoD（可視性・追跡性・監査可能性）を満たすテストを追加する。
 - **Want**:
-  - トークン数の高精度見積もり。
-  - 複数ノード間のセッション共有。
-  - 高度な要約アルゴリズム（段階要約・意味圧縮最適化）。
+  - 複数ロールの並列実行最適化。
+  - リモートAgent常駐構成との透過的連携。
+  - 高度なタスク分解（自動再計画・再委譲）。
 
 ## 2. スコープ定義 (Scope Definition)
 
 ### ✅ In-Scope (やること)
 
-- `src/ports/outbound/session-store.port.ts`
-  - モデル保存だけでなく、セッション状態（履歴・メタ・コンテキスト方針）を扱える最小 API を追加。
-- `src/adapters/session/in-memory-session-store.adapter.ts`
-  - 新しい SessionStorePort 契約に追従し、テスト用の完全動作実装を追加。
-- `src/adapters/session/file-session-store.adapter.ts`
-  - `~/.multi-llm-agent-cli/session.json` を拡張し、セッション情報の保存/復元/削除を実装。
-- `src/application/chat/run-chat.usecase.ts`
-  - セッション開始・読込結果を使って、1ターン実行時の入力コンテキストを組み立てる責務を最小追加。
-- `src/interaction/cli/commands/chat.command.ts`
-  - `sessionId` 指定時の履歴反映、ターン完了時の履歴更新、コンテキスト方針表示を追加。
-- `src/main.ts`
-  - `session start/save/load/end` コマンドを追加し、既存 `chat` と同じ use case / store を利用。
-- `src/tests/unit/application/run-chat.usecase.test.ts`
-  - セッション復元・保持件数・破棄・要約反映のユニットテストを追加。
-- `src/tests/unit/application/main.program.test.ts`
-  - `session` サブコマンド登録と引数受け渡しを検証。
-- `src/tests/acceptance/features/F-004.session.acceptance.test.ts`（新規）
-  - 保存→復元で文脈再利用されることを検証。
-- `src/tests/acceptance/features/F-005.context.acceptance.test.ts`（新規）
-  - 保持/破棄/要約の操作結果が次ターンに反映されることを検証。
+- `src/domain/orchestration/entities/role.ts`（新規）
+  - ロール名、責務説明、委譲可能先を持つ論理ロール定義を実装。
+- `src/domain/orchestration/entities/task.ts`（新規）
+  - `taskId/parentTaskId/role/status/timestamps/failureReason` を持つ親子タスクモデルを実装。
+- `src/application/orchestration/dispatch-task.usecase.ts`（新規）
+  - 親タスク作成、子タスク委譲、状態更新（queued/running/completed/failed）を一元管理。
+- `src/application/orchestration/run-role-graph.usecase.ts`（新規）
+  - 初期ロール（coordinator）から子ロールへの委譲フローを単一 Control Node 内で実行。
+- `src/mcp/McpServer.ts`
+  - 既存 `orchestrate/task` から上記 use case を呼び出し、委譲先ロールと親子タスク情報を通知/結果に含める。
+- `src/operations/logging/chat-event-logger.ts`
+  - ロール委譲イベントを監査ログとして記録できるエントリ型を追加。
+- `src/shared/types/chat.ts` または `src/shared/types/events.ts`（新規）
+  - ロール委譲通知に使う最小イベント型を追加し、MCP通知の構造を固定化。
+- `src/tests/unit/application/dispatch-task.usecase.test.ts`（新規）
+  - 親子整合性、失敗時の状態遷移、委譲履歴記録を検証。
+- `src/tests/unit/application/run-role-graph.usecase.test.ts`（新規）
+  - coordinator から各ロールへ委譲される最小シナリオを検証。
+- `src/tests/acceptance/features/F-101.role-definition.acceptance.test.ts`（新規）
+  - ロール定義が表示可能で、実行時ロール構成が記録されることを検証。
+- `src/tests/acceptance/features/F-102.delegation.acceptance.test.ts`（新規）
+  - 親子タスク追跡と委譲表示/ログ出力を end-to-end で検証。
 - `README.md`
-  - `session` コマンドとコンテキスト管理の MVP 仕様を最小追記。
+  - ロール実行モデル（MVP）の制約と確認手順を追記。
 
 ### ⛔ Non-Goals (やらないこと/スコープ外)
 
-- **分散セッション同期**: 複数マシン・複数プロセス間の同期は実装しない。
-- **大規模リファクタリング**: 既存のモジュール構成全面変更は行わない。
-- **新規依存追加**: 要約や永続化のために新しい外部ライブラリは導入しない。
-- **高度メモリ戦略**: ベクトルDB連携、長期記憶、自動重要度抽出は対象外。
-- **F-006/F-007 の同時拡張**: event-output/headless の新機能追加は行わない。
+- **分散実行**: リモートAgent常駐、ノード間Agent通信は実装しない。
+- **並列実行最適化**: F-103（ワーカープール、並列スケジューリング）は実装しない。
+- **大規模再設計**: 既存CLI全体やMCPプロトコル全面刷新は行わない。
+- **新規依存追加**: タスクキュー基盤やワークフレームワークなど外部ライブラリは導入しない。
+- **認可機能の拡張**: F-402 相当のロールベース認可詳細は今回扱わない。
 
 ## 3. 実装ステップ (Implementation Steps)
 
-1. [ ] **Step 1: セッションデータ契約を定義する**
-   - _Action_: `SessionStorePort` にセッション状態取得/保存/終了 API を追加し、型を定義する。
-   - _Action_: in-memory / file adapter を同契約へ合わせる。
-   - _Validation_: 既存 F-003 テストが回帰しないことを確認。
+1. [ ] **Step 1: ロール定義と親子タスクモデルを追加する**
+   - _Action_: `role.ts` に標準ロール4種と責務マップを定義。
+   - _Action_: `task.ts` に親子タスク追跡に必要な属性と状態遷移型を追加。
+   - _Validation_: ロール参照と task モデル生成のユニットテストを作成。
 
-2. [ ] **Step 2: session start/save/load/end を実装する**
-   - _Action_: `main.ts` に `session` サブコマンド群を追加し、開始・保存・読込・終了を操作可能にする。
-   - _Action_: 成功時に保存先/対象 session id を標準出力に明示する。
-   - _Validation_: `main.program` 系ユニットテストでコマンド登録と action 挙動を検証。
+2. [ ] **Step 2: 委譲ユースケースを実装する**
+   - _Action_: `dispatch-task.usecase.ts` で親タスク発行、子タスク委譲、完了/失敗更新を実装。
+   - _Action_: 失敗時に `failureReason` を保存し、親へ集約できるようにする。
+   - _Validation_: 親子ID整合性、状態遷移、異常系のユニットテストを追加。
 
-3. [ ] **Step 3: チャットと履歴永続化を接続する**
-   - _Action_: `chat.command.ts` でセッション履歴をロードして初期 `messages` に反映。
-   - _Action_: 各ターン完了時に user/assistant 発話をセッションへ保存。
-   - _Validation_: 連続2ターンで履歴が再利用されるテストを追加。
+3. [ ] **Step 3: Control Node 内ロール実行フローへ接続する**
+   - _Action_: `run-role-graph.usecase.ts` を作成し、coordinator -> worker role の単一ノード委譲フローを実装。
+   - _Action_: `McpServer.ts` の `runOrchestration` を置き換え、委譲イベント（委譲先ロール、taskId、parentTaskId）を通知。
+   - _Validation_: 既存 `orchestrate/task` の応答互換を保ちつつ、追加フィールドが返ることを検証。
 
-4. [ ] **Step 4: 最小コンテキスト管理（保持/破棄/要約）を追加する**
-   - _Action_: 保持件数ポリシー（過去Nターン）を導入し、投入メッセージを制限する。
-   - _Action_: 明示破棄（全破棄 or 範囲破棄）を `session` コマンドで提供。
-   - _Action_: 要約圧縮は「古い履歴を1メッセージへ要約」する最小実装に限定する。
-   - _Validation_: F-005 受け入れテストで保持/破棄/圧縮の反映を確認。
+4. [ ] **Step 4: 可視化と監査ログを実装する**
+   - _Action_: 委譲開始/完了/失敗イベントの出力形式を固定化し、`chat-event-logger` で記録。
+   - _Action_: ユーザー向け表示（通知メッセージ）に委譲先ロールを明示。
+   - _Validation_: ログに `parentTaskId/childTaskId/delegatedRole/delegatedAt/resultAt/failureReason` が残ることを確認。
 
-5. [ ] **Step 5: 受け入れテストとドキュメントを整える**
-   - _Action_: `F-004`/`F-005` acceptance テストを追加。
-   - _Action_: README の `session` 操作例と制約（MVP）を更新。
-   - _Validation_: `npm test` 全体成功、DoD 対応を確認。
+5. [ ] **Step 5: 受け入れテストとドキュメント整備**
+   - _Action_: F-101/F-102 の acceptance テストを追加。
+   - _Action_: README に MVP の制約（単一ノード内委譲、非対応範囲）を追記。
+   - _Validation_: 追加テスト + 既存 F-001〜F-005 が通ることを確認。
 
 ## 4. 検証プラン (Verification Plan)
 
 - 必須テスト:
-  - `npm test -- src/tests/unit/application/run-chat.usecase.test.ts`
-  - `npm test -- src/tests/unit/application/main.program.test.ts`
-  - `npm test -- src/tests/acceptance/features/F-004.session.acceptance.test.ts`
-  - `npm test -- src/tests/acceptance/features/F-005.context.acceptance.test.ts`
+  - `npm test -- src/tests/unit/application/dispatch-task.usecase.test.ts`
+  - `npm test -- src/tests/unit/application/run-role-graph.usecase.test.ts`
+  - `npm test -- src/tests/acceptance/features/F-101.role-definition.acceptance.test.ts`
+  - `npm test -- src/tests/acceptance/features/F-102.delegation.acceptance.test.ts`
 - 回帰確認:
   - `npm test -- src/tests/acceptance/features/F-001.chat.acceptance.test.ts`
   - `npm test -- src/tests/acceptance/features/F-002.streaming.acceptance.test.ts`
   - `npm test -- src/tests/acceptance/features/F-003.model-selection.acceptance.test.ts`
+  - `npm test -- src/tests/acceptance/features/F-004.session.acceptance.test.ts`
+  - `npm test -- src/tests/acceptance/features/F-005.context.acceptance.test.ts`
 - 最終確認:
   - `npm test`
 - 手動確認:
-  - `session start` → `chat` 実行 → `session save` → `session load` 後に文脈が再利用されること。
-  - コンテキスト破棄/要約操作後の次ターンで、反映された履歴のみ送信されること。
+  - `orchestrate/task` 実行時に「どのロールへ委譲したか」が通知で確認できること。
+  - 親タスクから子タスクまでID連鎖が追跡でき、失敗時に理由が記録されること。
 
 ## 5. ガードレール (Guardrails for Coding Agent)
 
 - `doc/CURRENT_PLAN.md` に記載したファイル以外は原則変更しない。
-- 実装中に追加仕様が必要になった場合は、先に本計画を更新して承認を得る。
-- 既存 F-001/F-002/F-003 の振る舞い（逐次表示、モデル解決優先順、対話 UX）を壊さない。
-- 永続化フォーマット変更時は後方互換（既存 `session.json` 読み込み失敗時の安全側処理）を維持する。
-- 複雑化を避け、MVP では「最小機能で受け入れ条件を満たす」ことを優先する。
+- 計画にない仕様追加（例: 並列実行、分散通信、認可詳細）は実施せず、別Issueへ切り出す。
+- 既存 `orchestrate/task` の基本I/F（呼び出し方法・最終応答の返却）は互換を維持する。
+- ログ項目は監査要件を優先し、欠落時は silent fail せず最低限の失敗理由を残す。
+- 実装中にスコープ変更が必要になった場合は、先に本計画を更新して承認を得る。
