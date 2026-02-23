@@ -368,7 +368,8 @@ export class McpServer {
     const dispatchTask = new DispatchTaskUseCase();
     const roleGraph = new RunRoleGraphUseCase(
       dispatchTask,
-      (role, prompt) => this.executeRole(role, prompt, taskId, ws),
+      (role, prompt, signal) =>
+        this.executeRole(role, prompt, taskId, ws, signal),
       async (event) => {
         this.sendRoleDelegationNotification(ws, taskId, event);
         try {
@@ -387,6 +388,11 @@ export class McpServer {
             auditLogError: true,
           });
         }
+      },
+      {
+        maxParallelRoles: 2,
+        maxRetriesPerRole: 1,
+        maxCycleCount: 3,
       },
     );
 
@@ -409,6 +415,7 @@ export class McpServer {
     prompt: string,
     taskId: string,
     ws: WebSocket,
+    signal?: AbortSignal,
   ): Promise<string> {
     const client =
       role === "documenter" ? this.orchestratorLLM : this.workerLLM;
@@ -423,7 +430,10 @@ export class McpServer {
       },
     ];
     let output = "";
-    for await (const chunk of client.chat("llama2", messages)) {
+    for await (const chunk of client.chat("llama2", messages, true, signal)) {
+      if (signal?.aborted) {
+        throw new Error("Execution aborted");
+      }
       if (chunk.message?.content) {
         output += chunk.message.content;
       }
@@ -467,6 +477,14 @@ export class McpServer {
     taskId: string,
     event: RoleDelegationEvent,
   ) {
+    const durationMs =
+      event.result_at && event.delegated_at
+        ? Math.max(
+            0,
+            new Date(event.result_at).getTime() -
+              new Date(event.delegated_at).getTime(),
+          )
+        : undefined;
     const message =
       event.status === "failed"
         ? `Delegated to ${event.delegated_role} failed: ${event.failure_reason ?? "unknown error"}`
@@ -479,7 +497,12 @@ export class McpServer {
       delegatedRole: event.delegated_role,
       delegatedAt: event.delegated_at,
       resultAt: event.result_at,
+      durationMs,
       failureReason: event.failure_reason,
+      retryCount: event.retry_count,
+      loopTrigger: event.loop_trigger,
+      loopThreshold: event.loop_threshold,
+      loopRecentHistory: event.loop_recent_history,
       message,
     });
   }
@@ -498,6 +521,10 @@ export class McpServer {
       delegated_at: event.delegated_at,
       result_at: event.result_at,
       failure_reason: event.failure_reason,
+      retry_count: event.retry_count,
+      loop_trigger: event.loop_trigger,
+      loop_threshold: event.loop_threshold,
+      loop_recent_history: event.loop_recent_history,
     });
   }
 

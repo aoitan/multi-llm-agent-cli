@@ -66,12 +66,25 @@ describe("F-102 Role Delegation acceptance", () => {
     await expect(useCase.execute("implement feature")).rejects.toThrow(
       "policy violation",
     );
-    expect(auditEvents[auditEvents.length - 1]).toEqual(
+    const failedReviewerEvent = auditEvents.find(
+      (event) =>
+        event.delegated_role === "reviewer" && event.status === "failed",
+    );
+    expect(failedReviewerEvent).toEqual(
       expect.objectContaining({
         delegated_role: "reviewer",
         status: "failed",
-        failure_reason: "policy violation",
+        failure_reason:
+          "Retry limit exceeded: role=reviewer, retries=0, threshold=0, cause=policy violation",
+        loop_trigger: "retry_limit",
+        retry_count: 0,
       }),
     );
+    expect(
+      auditEvents.some(
+        (event) =>
+          event.delegated_role === "coordinator" && event.status === "failed",
+      ),
+    ).toBe(true);
   });
 });

@@ -133,4 +133,35 @@ describe("chat-event-logger", () => {
     expect(current).toContain('"child_task_id":"task-dev"');
     expect(current).toContain('"delegated_role":"developer"');
   });
+
+  it("writes loop guard metadata for role delegation failures", async () => {
+    const logFile = path.join(tempDir, "chat-events.jsonl");
+    process.env.CHAT_EVENT_LOG_FILE = logFile;
+
+    await writeChatEventLog({
+      timestamp: "2026-02-22T02:40:00.000Z",
+      session_id: "task-root",
+      event_type: "role_delegation",
+      parent_task_id: "task-root",
+      child_task_id: "task-review",
+      delegated_role: "reviewer",
+      delegated_at: "2026-02-22T02:40:00.000Z",
+      result_at: "2026-02-22T02:40:03.000Z",
+      failure_reason: "Loop threshold exceeded: role=reviewer, threshold=1",
+      retry_count: 1,
+      loop_trigger: "cycle_limit",
+      loop_threshold: 1,
+      loop_recent_history: [
+        "reviewer#hash",
+        "email test@example.com token sk-12345678901234567890",
+      ],
+    });
+
+    const current = await fsp.readFile(logFile, "utf-8");
+    expect(current).toContain('"loop_trigger":"cycle_limit"');
+    expect(current).toContain('"loop_threshold":1');
+    expect(current).toContain(
+      '"loop_recent_history":["reviewer#hash","email [REDACTED_EMAIL] token [REDACTED_KEY]"]',
+    );
+  });
 });

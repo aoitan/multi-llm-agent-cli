@@ -10,4 +10,8 @@ export interface RoleDelegationEvent {
   delegated_at: string;
   result_at?: string;
   failure_reason?: string;
+  retry_count?: number;
+  loop_trigger?: "retry_limit" | "cycle_limit";
+  loop_threshold?: number;
+  loop_recent_history?: string[];
 }
