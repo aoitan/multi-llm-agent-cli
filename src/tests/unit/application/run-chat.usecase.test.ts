@@ -52,6 +52,15 @@ class FakeConfig implements ConfigPort {
   }
 
   async setDefaultModel(_model: string): Promise<void> {}
+
+  async getMcpToolStates(): Promise<Record<string, boolean>> {
+    return {};
+  }
+
+  async setMcpToolEnabled(
+    _toolName: string,
+    _enabled: boolean,
+  ): Promise<void> {}
 }
 
 class FakeLlmClient implements LlmClientPort {

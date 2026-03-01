@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { randomUUID } from "crypto";
 import * as os from "os";
 import * as path from "path";
+import { McpServer } from "./mcp/McpServer";
 import { RunChatUseCase } from "./application/chat/run-chat.usecase";
 import { ResolveModelUseCase } from "./application/model-endpoint/resolve-model.usecase";
 import { FileConfigAdapter } from "./adapters/config/file-config.adapter";
@@ -11,6 +12,7 @@ import { FileSessionStoreAdapter } from "./adapters/session/file-session-store.a
 import { runChatCommand } from "./interaction/cli/commands/chat.command";
 import {
   ChatEventLogEntry,
+  readLatestMcpToolEntries,
   writeChatEventLog,
 } from "./operations/logging/chat-event-logger";
 import { LlmClientPort } from "./ports/outbound/llm-client.port";
@@ -30,6 +32,15 @@ const SESSION_STORAGE_PATH = path.join(
     path.join(os.homedir(), ".multi-llm-agent-cli"),
   "session.json",
 );
+const MCP_ADMIN_SESSION_ID = "mcp-admin";
+
+type McpToolView = {
+  name: string;
+  enabled: boolean;
+  callCount?: number;
+  lastSuccess?: boolean;
+  lastCalledAt?: string;
+};
 
 export function createProgram(deps?: {
   useCase?: RunChatUseCase;
@@ -62,6 +73,56 @@ export function createProgram(deps?: {
     } catch {
       // Logging must never break command execution.
     }
+  };
+  let mcpHistoryPromise: Promise<Map<string, ChatEventLogEntry>> | null = null;
+  const loadMcpToolHistory = async (): Promise<
+    Map<string, ChatEventLogEntry>
+  > => {
+    if (!mcpHistoryPromise) {
+      mcpHistoryPromise = (async () => {
+        try {
+          return await readLatestMcpToolEntries();
+        } catch {
+          // Log inspection must not block MCP admin operations.
+          return new Map<string, ChatEventLogEntry>();
+        }
+      })();
+    }
+
+    return mcpHistoryPromise;
+  };
+  const loadMcpToolViews = async (): Promise<McpToolView[]> => {
+    const states = await config.getMcpToolStates();
+    const lastToolEntries = await loadMcpToolHistory();
+
+    return McpServer.createToolSnapshot(states).map((tool) => {
+      const lastEntry = lastToolEntries.get(tool.name);
+      return {
+        name: tool.name,
+        enabled: tool.enabled,
+        callCount: lastEntry?.mcp_call_count,
+        lastSuccess: lastEntry?.mcp_success,
+        lastCalledAt: lastEntry?.timestamp,
+      };
+    });
+  };
+  const getMcpToolView = async (toolName: string): Promise<McpToolView> => {
+    const tools = await loadMcpToolViews();
+    const tool = tools.find((item) => item.name === toolName);
+    if (!tool) {
+      throw new Error(`Tool not found: ${toolName}`);
+    }
+    return tool;
+  };
+  const printMcpToolList = (heading: string, tools: McpToolView[]): void => {
+    console.log(heading);
+    if (tools.length === 0) {
+      console.log("  (none)");
+      return;
+    }
+    tools.forEach((tool) => {
+      console.log(`  - ${tool.name}: ${tool.enabled ? "enabled" : "disabled"}`);
+    });
   };
 
   const program = new Command();
@@ -146,6 +207,102 @@ export function createProgram(deps?: {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`モデル設定に失敗しました: ${message}`);
+      }
+    });
+
+  const mcpCommand = program
+    .command("mcp")
+    .description("MCP tool management operations.");
+
+  mcpCommand
+    .command("list")
+    .description("List known MCP tools and their status.")
+    .action(async () => {
+      try {
+        const tools = await loadMcpToolViews();
+        printMcpToolList("MCPツール一覧:", tools);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`MCPツール一覧の取得に失敗しました: ${message}`);
+        process.exitCode = 1;
+      }
+    });
+
+  mcpCommand
+    .command("status [tool_name]")
+    .description("Show MCP tool status.")
+    .action(async (toolName?: string) => {
+      try {
+        if (toolName) {
+          const tool = await getMcpToolView(toolName);
+          console.log(`tool=${toolName}`);
+          console.log(`status=${tool.enabled ? "enabled" : "disabled"}`);
+          console.log(`call_count=${tool.callCount ?? 0}`);
+          console.log(
+            `last_success=${
+              tool.lastSuccess === undefined
+                ? "unknown"
+                : tool.lastSuccess
+                  ? "yes"
+                  : "no"
+            }`,
+          );
+          console.log(`last_called_at=${tool.lastCalledAt ?? "never"}`);
+          return;
+        }
+
+        const tools = await loadMcpToolViews();
+        printMcpToolList("MCPステータス:", tools);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`MCPステータスの取得に失敗しました: ${message}`);
+        process.exitCode = 1;
+      }
+    });
+
+  mcpCommand
+    .command("enable <tool_name>")
+    .description("Enable an MCP tool.")
+    .action(async (toolName: string) => {
+      try {
+        const tool = await getMcpToolView(toolName);
+        await config.setMcpToolEnabled(toolName, true);
+        console.log(`MCPツールを有効化しました: ${toolName}`);
+        await logSessionEvent(true, {
+          session_id: MCP_ADMIN_SESSION_ID,
+          event_type: "mcp_tool_state_change",
+          mcp_tool_name: toolName,
+          mcp_previous_enabled: tool.enabled,
+          mcp_enabled: true,
+        });
+        mcpHistoryPromise = null;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`MCPツールの有効化に失敗しました: ${message}`);
+        process.exitCode = 1;
+      }
+    });
+
+  mcpCommand
+    .command("disable <tool_name>")
+    .description("Disable an MCP tool.")
+    .action(async (toolName: string) => {
+      try {
+        const tool = await getMcpToolView(toolName);
+        await config.setMcpToolEnabled(toolName, false);
+        console.log(`MCPツールを無効化しました: ${toolName}`);
+        await logSessionEvent(true, {
+          session_id: MCP_ADMIN_SESSION_ID,
+          event_type: "mcp_tool_state_change",
+          mcp_tool_name: toolName,
+          mcp_previous_enabled: tool.enabled,
+          mcp_enabled: false,
+        });
+        mcpHistoryPromise = null;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`MCPツールの無効化に失敗しました: ${message}`);
+        process.exitCode = 1;
       }
     });
 

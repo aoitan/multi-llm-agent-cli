@@ -1,6 +1,7 @@
-import { promises as fsp } from "fs";
+import { createReadStream, promises as fsp } from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as readline from "readline";
 import { ModelResolutionSource } from "../../shared/types/chat";
 import { RoleName } from "../../domain/orchestration/entities/role";
 
@@ -22,7 +23,9 @@ export interface ChatEventLogEntry {
     | "context_summarize"
     | "turn_completed"
     | "turn_failed"
-    | "role_delegation";
+    | "role_delegation"
+    | "mcp_tool_call"
+    | "mcp_tool_state_change";
   model?: string;
   resolution_source?: ModelResolutionSource;
   user_input?: string;
@@ -39,6 +42,12 @@ export interface ChatEventLogEntry {
   loop_trigger?: "retry_limit" | "cycle_limit";
   loop_threshold?: number;
   loop_recent_history?: string[];
+  mcp_tool_name?: string;
+  mcp_server_name?: string;
+  mcp_success?: boolean;
+  mcp_call_count?: number;
+  mcp_enabled?: boolean;
+  mcp_previous_enabled?: boolean;
 }
 
 export type ChatEventLogger = (entry: ChatEventLogEntry) => Promise<void>;
@@ -154,3 +163,74 @@ export const writeChatEventLog: ChatEventLogger = async (entry) => {
   }
   await safeChmod(logFile, 0o600);
 };
+
+export async function readChatEventLogEntries(
+  limit: number = 200,
+): Promise<ChatEventLogEntry[]> {
+  try {
+    const stream = createReadStream(resolveLogFile(), { encoding: "utf-8" });
+    const reader = readline.createInterface({
+      input: stream,
+      crlfDelay: Infinity,
+    });
+    const selected: ChatEventLogEntry[] = [];
+
+    for await (const line of reader) {
+      if (!line) {
+        continue;
+      }
+      try {
+        const entry = JSON.parse(line) as ChatEventLogEntry;
+        selected.push(entry);
+        if (limit > 0 && selected.length > limit) {
+          selected.shift();
+        }
+      } catch {
+        // Ignore malformed log lines.
+      }
+    }
+
+    return selected;
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException).code;
+    if (errorCode === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function readLatestMcpToolEntries(): Promise<
+  Map<string, ChatEventLogEntry>
+> {
+  try {
+    const stream = createReadStream(resolveLogFile(), { encoding: "utf-8" });
+    const reader = readline.createInterface({
+      input: stream,
+      crlfDelay: Infinity,
+    });
+    const entries = new Map<string, ChatEventLogEntry>();
+
+    for await (const line of reader) {
+      if (!line) {
+        continue;
+      }
+      try {
+        const entry = JSON.parse(line) as ChatEventLogEntry;
+        if (entry.event_type === "mcp_tool_call" && entry.mcp_tool_name) {
+          entries.set(entry.mcp_tool_name, entry);
+        }
+      } catch {
+        // Ignore malformed log lines.
+      }
+    }
+
+    return entries;
+  } catch (error) {
+    const errorCode = (error as NodeJS.ErrnoException).code;
+    if (errorCode === "ENOENT") {
+      return new Map();
+    }
+    throw error;
+  }
+}
