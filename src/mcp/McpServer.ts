@@ -192,6 +192,7 @@ type ToolFunction = (...args: any[]) => Promise<any>;
 const PLUGIN_DIR = path.join(os.homedir(), ".multi-llm-agent-cli", "plugins");
 const MCP_SERVER_SESSION_ID = "mcp-server";
 const MCP_SERVER_NAME = "local-control-node";
+const MCP_SERVER_HOST = "127.0.0.1";
 
 export class McpServer {
   private wss: WebSocketServer;
@@ -208,42 +209,9 @@ export class McpServer {
     return ["calculator"];
   }
 
-  static discoverRegisteredToolNames(): string[] {
-    const names = new Set<string>(McpServer.getBuiltinToolNames());
-
-    if (!fs.existsSync(PLUGIN_DIR)) {
-      return Array.from(names).sort((a, b) => a.localeCompare(b));
-    }
-
-    const pluginFiles = fs
-      .readdirSync(PLUGIN_DIR)
-      .filter((file) => file.endsWith(".js"));
-
-    for (const file of pluginFiles) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const plugin = require(path.join(PLUGIN_DIR, file));
-        if (plugin?.name && typeof plugin.name === "string") {
-          names.add(plugin.name);
-        }
-        if (typeof plugin?.register === "function") {
-          plugin.register({
-            registerTool(name: string) {
-              names.add(name);
-            },
-          });
-        }
-      } catch {
-        // Ignore plugin parse errors during discovery.
-      }
-    }
-
-    return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }
-
   static createToolSnapshot(
     states: Record<string, boolean>,
-    registeredToolNames: string[] = McpServer.discoverRegisteredToolNames(),
+    registeredToolNames: string[] = McpServer.getBuiltinToolNames(),
   ): Array<{ name: string; enabled: boolean }> {
     const names = new Set<string>([
       ...registeredToolNames,
@@ -258,8 +226,56 @@ export class McpServer {
       }));
   }
 
+  private static isLoopbackAddress(address?: string): boolean {
+    return (
+      address === undefined ||
+      address === "::1" ||
+      address === "::ffff:127.0.0.1" ||
+      address === MCP_SERVER_HOST
+    );
+  }
+
+  private static isTrustedOrigin(origin?: string): boolean {
+    if (!origin) {
+      return true;
+    }
+
+    try {
+      const parsed = new URL(origin);
+      return (
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "::1" ||
+        parsed.hostname === MCP_SERVER_HOST
+      );
+    } catch {
+      return false;
+    }
+  }
+
   constructor(config: ConfigPort, port: number = 8080) {
-    this.wss = new WebSocketServer({ port });
+    this.wss = new WebSocketServer({
+      host: MCP_SERVER_HOST,
+      port,
+      verifyClient: (info: {
+        origin?: string;
+        req: { socket: { remoteAddress?: string } };
+      }) => {
+        const { origin, req } = info;
+        if (!McpServer.isLoopbackAddress(req.socket.remoteAddress)) {
+          logger.warn(
+            `Rejected non-loopback MCP connection from ${req.socket.remoteAddress ?? "unknown"}`,
+          );
+          return false;
+        }
+        if (!McpServer.isTrustedOrigin(origin)) {
+          logger.warn(
+            `Rejected MCP connection from untrusted origin: ${origin}`,
+          );
+          return false;
+        }
+        return true;
+      },
+    });
     this.orchestratorLLM = new OllamaClient(); // 指示者LLM
     this.workerLLM = new OllamaClient(); // 作業者LLM
     this.config = config;
@@ -276,7 +292,7 @@ export class McpServer {
 
     this.loadPlugins(); // プラグインをロード
 
-    logger.info(`MCP Server started on ws://localhost:${port}`);
+    logger.info(`MCP Server started on ws://${MCP_SERVER_HOST}:${port}`);
 
     this.wss.on("connection", (ws) => {
       logger.info("Client connected");
@@ -306,12 +322,22 @@ export class McpServer {
 
   public async listTools(): Promise<Array<{ name: string; enabled: boolean }>> {
     const states = await this.config.getMcpToolStates();
-    return McpServer.createToolSnapshot({
-      ...Object.fromEntries(
-        Array.from(this.tools.keys()).map((toolName) => [toolName, true]),
-      ),
-      ...states,
-    });
+    const registeredToolNames = Array.from(
+      new Set<string>([
+        ...McpServer.getBuiltinToolNames(),
+        ...Array.from(this.tools.keys()),
+      ]),
+    ).sort((a, b) => a.localeCompare(b));
+
+    return McpServer.createToolSnapshot(
+      {
+        ...Object.fromEntries(
+          Array.from(this.tools.keys()).map((toolName) => [toolName, true]),
+        ),
+        ...states,
+      },
+      registeredToolNames,
+    );
   }
 
   private async isToolEnabled(toolName: string): Promise<boolean> {
@@ -372,18 +398,26 @@ export class McpServer {
     }
 
     this.toolCallCountsLoadPromise = (async () => {
-      const entries = await readLatestMcpToolEntries();
-      entries.forEach((entry, toolName) => {
-        if (typeof entry.mcp_call_count !== "number") {
-          return;
-        }
-        const current = this.toolCallCounts.get(toolName) ?? 0;
-        this.toolCallCounts.set(
-          toolName,
-          Math.max(current, entry.mcp_call_count),
+      try {
+        const entries = await readLatestMcpToolEntries();
+        entries.forEach((entry, toolName) => {
+          if (typeof entry.mcp_call_count !== "number") {
+            return;
+          }
+          const current = this.toolCallCounts.get(toolName) ?? 0;
+          this.toolCallCounts.set(
+            toolName,
+            Math.max(current, entry.mcp_call_count),
+          );
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          `Failed to load previous MCP tool entries; proceeding with empty counts: ${message}`,
         );
-      });
-      this.toolCallCountsLoaded = true;
+      } finally {
+        this.toolCallCountsLoaded = true;
+      }
     })();
 
     try {

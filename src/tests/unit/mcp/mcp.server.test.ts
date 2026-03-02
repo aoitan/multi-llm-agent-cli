@@ -4,6 +4,7 @@ import { promises as fsp } from "fs";
 import * as os from "os";
 import * as path from "path";
 import * as chatEventLogger from "../../../operations/logging/chat-event-logger";
+import { logger } from "../../../utils/logger";
 
 describe("McpServer arithmetic evaluator", () => {
   let tempDir: string;
@@ -14,6 +15,7 @@ describe("McpServer arithmetic evaluator", () => {
   });
 
   afterEach(async () => {
+    jest.restoreAllMocks();
     delete process.env.CHAT_EVENT_LOG_FILE;
     await fsp.rm(tempDir, { recursive: true, force: true });
   });
@@ -142,5 +144,43 @@ describe("McpServer arithmetic evaluator", () => {
         mcp_call_count: 6,
       }),
     );
+  });
+
+  it("treats log history load failures as an empty baseline", async () => {
+    jest.spyOn(console, "warn").mockImplementation(() => {});
+    jest.spyOn(logger, "warn").mockResolvedValue(undefined);
+    jest
+      .spyOn(chatEventLogger, "readLatestMcpToolEntries")
+      .mockRejectedValue(new Error("permission denied"));
+    const writeLogSpy = jest
+      .spyOn(chatEventLogger, "writeChatEventLog")
+      .mockResolvedValue(undefined);
+    const server = Object.create(McpServer.prototype) as any;
+    server.tools = new Map([["calculator", jest.fn().mockResolvedValue("ok")]]);
+    server.toolCallCounts = new Map();
+    server.toolCallCountsLoaded = false;
+    server.toolCallCountsLoadPromise = null;
+    server.config = {
+      getMcpToolStates: jest.fn().mockResolvedValue({
+        calculator: true,
+      }),
+    };
+
+    await expect(server.callTool("calculator", "1+1")).resolves.toBe("ok");
+
+    expect(writeLogSpy).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        mcp_tool_name: "calculator",
+        mcp_call_count: 1,
+      }),
+    );
+  });
+
+  it("rejects non-local browser origins", () => {
+    const serverClass = McpServer as any;
+
+    expect(serverClass.isTrustedOrigin(undefined)).toBe(true);
+    expect(serverClass.isTrustedOrigin("http://localhost:3000")).toBe(true);
+    expect(serverClass.isTrustedOrigin("https://example.com")).toBe(false);
   });
 });

@@ -175,19 +175,24 @@ export async function readChatEventLogEntries(
     });
     const selected: ChatEventLogEntry[] = [];
 
-    for await (const line of reader) {
-      if (!line) {
-        continue;
-      }
-      try {
-        const entry = JSON.parse(line) as ChatEventLogEntry;
-        selected.push(entry);
-        if (limit > 0 && selected.length > limit) {
-          selected.shift();
+    try {
+      for await (const line of reader) {
+        if (!line) {
+          continue;
         }
-      } catch {
-        // Ignore malformed log lines.
+        try {
+          const entry = JSON.parse(line) as ChatEventLogEntry;
+          selected.push(entry);
+          if (limit > 0 && selected.length > limit) {
+            selected.shift();
+          }
+        } catch {
+          // Ignore malformed log lines.
+        }
       }
+    } finally {
+      reader.close();
+      stream.destroy();
     }
 
     return selected;
@@ -211,18 +216,23 @@ export async function readLatestMcpToolEntries(): Promise<
     });
     const entries = new Map<string, ChatEventLogEntry>();
 
-    for await (const line of reader) {
-      if (!line) {
-        continue;
-      }
-      try {
-        const entry = JSON.parse(line) as ChatEventLogEntry;
-        if (entry.event_type === "mcp_tool_call" && entry.mcp_tool_name) {
-          entries.set(entry.mcp_tool_name, entry);
+    try {
+      for await (const line of reader) {
+        if (!line) {
+          continue;
         }
-      } catch {
-        // Ignore malformed log lines.
+        try {
+          const entry = JSON.parse(line) as ChatEventLogEntry;
+          if (entry.event_type === "mcp_tool_call" && entry.mcp_tool_name) {
+            entries.set(entry.mcp_tool_name, entry);
+          }
+        } catch {
+          // Ignore malformed log lines.
+        }
       }
+    } finally {
+      reader.close();
+      stream.destroy();
     }
 
     return entries;
