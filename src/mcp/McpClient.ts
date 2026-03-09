@@ -1,14 +1,14 @@
-import WebSocket from 'ws';
+import * as readline from "readline";
 
 interface JsonRpcRequest {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   id: string | number;
   method: string;
   params?: any;
 }
 
 interface JsonRpcResponse {
-  jsonrpc: '2.0';
+  jsonrpc: "2.0";
   id: string | number | null;
   result?: any;
   error?: {
@@ -16,57 +16,69 @@ interface JsonRpcResponse {
     message: string;
     data?: any;
   };
+  method?: string;
+  params?: any;
 }
 
 export class McpClient {
-  private ws: WebSocket | null = null;
-  private url: string;
-  private messageIdCounter: number = 0;
-  private pendingRequests = new Map<number, { resolve: (value: any) => void; reject: (reason?: any) => void }>();
+  private input: NodeJS.ReadableStream;
+  private output: NodeJS.WritableStream;
+  private reader: readline.Interface | null = null;
+  private messageIdCounter = 0;
+  private pendingRequests = new Map<
+    number,
+    { resolve: (value: any) => void; reject: (reason?: any) => void }
+  >();
 
-  constructor(url: string = 'ws://localhost:8080') {
-    this.url = url;
+  constructor(
+    input: NodeJS.ReadableStream = process.stdin,
+    output: NodeJS.WritableStream = process.stdout,
+  ) {
+    this.input = input;
+    this.output = output;
   }
 
   public connect(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.url);
+    if (this.reader) {
+      return Promise.resolve();
+    }
 
-      this.ws.onopen = () => {
-        console.log('Connected to MCP Server');
-        resolve();
-      };
-
-      this.ws.onmessage = event => {
-        this.handleMessage(event.data.toString());
-      };
-
-      this.ws.onclose = () => {
-        console.log('Disconnected from MCP Server');
-      };
-
-      this.ws.onerror = error => {
-        console.error('WebSocket error:', error);
-        reject(error);
-      };
+    this.reader = readline.createInterface({
+      input: this.input,
+      crlfDelay: Infinity,
     });
+
+    this.reader.on("line", (line) => {
+      const message = line.trim();
+      if (!message) {
+        return;
+      }
+      this.handleMessage(message);
+    });
+
+    this.reader.on("error", (error) => {
+      for (const pending of this.pendingRequests.values()) {
+        pending.reject(error);
+      }
+      this.pendingRequests.clear();
+    });
+
+    return Promise.resolve();
   }
 
   public disconnect(): void {
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    this.reader?.close();
+    this.reader = null;
   }
 
   public async sendRequest(method: string, params?: any): Promise<any> {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      throw new Error('WebSocket is not connected.');
+    if (!this.reader) {
+      throw new Error("stdio is not connected.");
     }
 
     const id = this.messageIdCounter++;
     const request: JsonRpcRequest = {
-      jsonrpc: '2.0',
+      jsonrpc: "2.0",
       id,
       method,
       params,
@@ -74,7 +86,7 @@ export class McpClient {
 
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject });
-      this.ws?.send(JSON.stringify(request));
+      this.output.write(`${JSON.stringify(request)}\n`);
     });
   }
 
@@ -83,26 +95,27 @@ export class McpClient {
       const response: JsonRpcResponse = JSON.parse(message);
 
       if (response.id !== undefined && response.id !== null) {
-        // This is a response to a request
         const pending = this.pendingRequests.get(response.id as number);
-        if (pending) {
-          if (response.error) {
-            pending.reject(response.error);
-          } else {
-            pending.resolve(response.result);
-          }
-          this.pendingRequests.delete(response.id as number);
+        if (!pending) {
+          return;
         }
-      } else {
-        // This might be a notification (a request without an id)
-        const notification = response as JsonRpcRequest;
-        if (notification.method) {
-          console.log(`Received notification: ${notification.method} with params:`, notification.params);
-          // Handle notifications here (e.g., 'initialized', 'notifications/roots/list_changed')
+        if (response.error) {
+          pending.reject(response.error);
+        } else {
+          pending.resolve(response.result);
         }
+        this.pendingRequests.delete(response.id as number);
+        return;
+      }
+
+      if (response.method) {
+        console.log(
+          `Received notification: ${response.method} with params:`,
+          response.params,
+        );
       }
     } catch (error) {
-      console.error('Error parsing message:', error);
+      console.error("Error parsing message:", error);
     }
   }
 }

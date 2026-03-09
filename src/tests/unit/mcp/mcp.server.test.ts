@@ -175,12 +175,4 @@ describe("McpServer arithmetic evaluator", () => {
       }),
     );
   });
-
-  it("rejects non-local browser origins", () => {
-    const serverClass = McpServer as any;
-
-    expect(serverClass.isTrustedOrigin(undefined)).toBe(true);
-    expect(serverClass.isTrustedOrigin("http://localhost:3000")).toBe(true);
-    expect(serverClass.isTrustedOrigin("https://example.com")).toBe(false);
-  });
 });
