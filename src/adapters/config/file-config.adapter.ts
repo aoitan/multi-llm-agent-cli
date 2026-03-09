@@ -1,18 +1,19 @@
-import * as fs from 'fs';
-import { promises as fsp } from 'fs';
-import * as os from 'os';
-import * as path from 'path';
-import { ConfigPort } from '../../ports/outbound/config.port';
+import * as fs from "fs";
+import { promises as fsp } from "fs";
+import * as os from "os";
+import * as path from "path";
+import { ConfigPort, McpToolStates } from "../../ports/outbound/config.port";
 
 interface StoredConfig {
   defaultModel?: string;
+  mcpTools?: McpToolStates;
 }
 
-const CONFIG_DIR = path.join(os.homedir(), '.multi-llm-agent-cli');
-const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
+const CONFIG_DIR = path.join(os.homedir(), ".multi-llm-agent-cli");
+const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
 
 export class FileConfigAdapter implements ConfigPort {
-  constructor(private readonly fallbackModel: string = 'llama2') {}
+  constructor(private readonly fallbackModel: string = "llama2") {}
 
   async getDefaultModel(): Promise<string> {
     const envModel = process.env.DEFAULT_MODEL?.trim();
@@ -32,7 +33,26 @@ export class FileConfigAdapter implements ConfigPort {
     };
 
     await fsp.mkdir(CONFIG_DIR, { recursive: true });
-    await fsp.writeFile(CONFIG_FILE, JSON.stringify(next, null, 2), 'utf-8');
+    await fsp.writeFile(CONFIG_FILE, JSON.stringify(next, null, 2), "utf-8");
+  }
+
+  async getMcpToolStates(): Promise<McpToolStates> {
+    const data = await this.readConfig();
+    return { ...(data.mcpTools ?? {}) };
+  }
+
+  async setMcpToolEnabled(toolName: string, enabled: boolean): Promise<void> {
+    const current = await this.readConfig();
+    const next: StoredConfig = {
+      ...current,
+      mcpTools: {
+        ...(current.mcpTools ?? {}),
+        [toolName]: enabled,
+      },
+    };
+
+    await fsp.mkdir(CONFIG_DIR, { recursive: true });
+    await fsp.writeFile(CONFIG_FILE, JSON.stringify(next, null, 2), "utf-8");
   }
 
   private async readConfig(): Promise<StoredConfig> {
@@ -41,13 +61,13 @@ export class FileConfigAdapter implements ConfigPort {
         return {};
       }
 
-      const raw = await fsp.readFile(CONFIG_FILE, 'utf-8');
+      const raw = await fsp.readFile(CONFIG_FILE, "utf-8");
       return JSON.parse(raw) as StoredConfig;
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return {};
       }
-      console.error('設定ファイルの読み込みに失敗しました:', error);
+      console.error("設定ファイルの読み込みに失敗しました:", error);
       return {};
     }
   }

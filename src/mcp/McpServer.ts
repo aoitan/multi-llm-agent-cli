@@ -1,14 +1,18 @@
-import { WebSocketServer, WebSocket } from "ws";
 import { OllamaClient, Message } from "../ollama/OllamaClient";
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
+import * as readline from "readline";
 import { logger } from "../utils/logger";
 import { DispatchTaskUseCase } from "../application/orchestration/dispatch-task.usecase";
 import { RunRoleGraphUseCase } from "../application/orchestration/run-role-graph.usecase";
 import { RoleName } from "../domain/orchestration/entities/role";
 import { RoleDelegationEvent } from "../shared/types/events";
-import { writeChatEventLog } from "../operations/logging/chat-event-logger";
+import {
+  readLatestMcpToolEntries,
+  writeChatEventLog,
+} from "../operations/logging/chat-event-logger";
+import { ConfigPort } from "../ports/outbound/config.port";
 
 type ArithmeticToken =
   | { kind: "number"; value: number }
@@ -186,18 +190,54 @@ interface Task {
 type ToolFunction = (...args: any[]) => Promise<any>;
 
 const PLUGIN_DIR = path.join(os.homedir(), ".multi-llm-agent-cli", "plugins");
+const MCP_SERVER_SESSION_ID = "mcp-server";
+const MCP_SERVER_NAME = "local-control-node";
+
+interface RpcConnection {
+  send(payload: string): void;
+}
 
 export class McpServer {
-  private wss: WebSocketServer;
+  private stdinReader: readline.Interface | null = null;
+  private stdioConnection: RpcConnection = {
+    send(payload: string) {
+      process.stdout.write(`${payload}\n`);
+    },
+  };
   private orchestratorLLM: OllamaClient;
   private workerLLM: OllamaClient;
   private tasks: Map<string, Task> = new Map(); // タスクの状態管理
   private tools: Map<string, ToolFunction> = new Map(); // 登録されたツール
+  private config: ConfigPort;
+  private toolCallCounts: Map<string, number> = new Map();
+  private toolCallCountsLoaded = false;
+  private toolCallCountsLoadPromise: Promise<void> | null = null;
 
-  constructor(port: number = 8080) {
-    this.wss = new WebSocketServer({ port });
+  static getBuiltinToolNames(): string[] {
+    return ["calculator"];
+  }
+
+  static createToolSnapshot(
+    states: Record<string, boolean>,
+    registeredToolNames: string[] = McpServer.getBuiltinToolNames(),
+  ): Array<{ name: string; enabled: boolean }> {
+    const names = new Set<string>([
+      ...registeredToolNames,
+      ...Object.keys(states),
+    ]);
+
+    return Array.from(names)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => ({
+        name,
+        enabled: states[name] !== false,
+      }));
+  }
+
+  constructor(config: ConfigPort, _legacyPort?: number) {
     this.orchestratorLLM = new OllamaClient(); // 指示者LLM
     this.workerLLM = new OllamaClient(); // 作業者LLM
+    this.config = config;
 
     // ダミーのツールを登録
     this.registerTool("calculator", async (expression: string) => {
@@ -211,27 +251,8 @@ export class McpServer {
 
     this.loadPlugins(); // プラグインをロード
 
-    logger.info(`MCP Server started on ws://localhost:${port}`);
-
-    this.wss.on("connection", (ws) => {
-      logger.info("Client connected");
-
-      ws.on("message", (message) => {
-        this.handleMessage(ws, message.toString());
-      });
-
-      ws.on("close", () => {
-        logger.info("Client disconnected");
-      });
-
-      ws.on("error", (error) => {
-        logger.error("WebSocket error:", error);
-      });
-    });
-
-    this.wss.on("error", (error) => {
-      logger.error("WebSocket server error:", error);
-    });
+    this.startStdioTransport();
+    logger.info("MCP Server started on stdio transport");
   }
 
   private registerTool(name: string, func: ToolFunction) {
@@ -239,12 +260,111 @@ export class McpServer {
     logger.info(`Tool registered: ${name}`);
   }
 
+  public async listTools(): Promise<Array<{ name: string; enabled: boolean }>> {
+    const states = await this.config.getMcpToolStates();
+    const registeredToolNames = Array.from(
+      new Set<string>([
+        ...McpServer.getBuiltinToolNames(),
+        ...Array.from(this.tools.keys()),
+      ]),
+    ).sort((a, b) => a.localeCompare(b));
+
+    return McpServer.createToolSnapshot(
+      {
+        ...Object.fromEntries(
+          Array.from(this.tools.keys()).map((toolName) => [toolName, true]),
+        ),
+        ...states,
+      },
+      registeredToolNames,
+    );
+  }
+
+  private async isToolEnabled(toolName: string): Promise<boolean> {
+    const states = await this.config.getMcpToolStates();
+    return states[toolName] !== false;
+  }
+
   private async callTool(toolName: string, ...args: any[]): Promise<any> {
     const tool = this.tools.get(toolName);
     if (!tool) {
       throw new Error(`Tool not found: ${toolName}`);
     }
-    return tool(...args);
+    if (!(await this.isToolEnabled(toolName))) {
+      await this.recordToolInvocation(toolName, false);
+      throw new Error(`Tool is disabled: ${toolName}`);
+    }
+
+    try {
+      const result = await tool(...args);
+      await this.recordToolInvocation(toolName, true);
+      return result;
+    } catch (error) {
+      await this.recordToolInvocation(toolName, false);
+      throw error;
+    }
+  }
+
+  private async recordToolInvocation(
+    toolName: string,
+    success: boolean,
+  ): Promise<void> {
+    try {
+      await this.ensureToolCallCountsLoaded();
+      const nextCount = (this.toolCallCounts.get(toolName) ?? 0) + 1;
+      this.toolCallCounts.set(toolName, nextCount);
+      await writeChatEventLog({
+        timestamp: new Date().toISOString(),
+        session_id: MCP_SERVER_SESSION_ID,
+        event_type: "mcp_tool_call",
+        mcp_tool_name: toolName,
+        mcp_server_name: MCP_SERVER_NAME,
+        mcp_success: success,
+        mcp_call_count: nextCount,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`Failed to persist MCP tool invocation log: ${message}`);
+    }
+  }
+
+  private async ensureToolCallCountsLoaded(): Promise<void> {
+    if (this.toolCallCountsLoaded) {
+      return;
+    }
+    if (this.toolCallCountsLoadPromise) {
+      await this.toolCallCountsLoadPromise;
+      return;
+    }
+
+    this.toolCallCountsLoadPromise = (async () => {
+      try {
+        const entries = await readLatestMcpToolEntries();
+        entries.forEach((entry, toolName) => {
+          if (typeof entry.mcp_call_count !== "number") {
+            return;
+          }
+          const current = this.toolCallCounts.get(toolName) ?? 0;
+          this.toolCallCounts.set(
+            toolName,
+            Math.max(current, entry.mcp_call_count),
+          );
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(
+          `Failed to load previous MCP tool entries; proceeding with empty counts: ${message}`,
+        );
+      } finally {
+        this.toolCallCountsLoaded = true;
+      }
+    })();
+
+    try {
+      await this.toolCallCountsLoadPromise;
+    } finally {
+      this.toolCallCountsLoadPromise = null;
+    }
   }
 
   private loadPlugins() {
@@ -265,6 +385,8 @@ export class McpServer {
         const plugin = require(pluginPath);
         if (plugin.name && typeof plugin.handler === "function") {
           this.registerTool(plugin.name, plugin.handler);
+        } else if (typeof plugin.register === "function") {
+          plugin.register(this);
         } else {
           logger.warn(
             `Invalid plugin format: ${file}. Must export 'name' and 'handler' function.`,
@@ -280,12 +402,36 @@ export class McpServer {
     }
   }
 
-  private async handleMessage(ws: WebSocket, message: string) {
+  private startStdioTransport(): void {
+    this.stdinReader = readline.createInterface({
+      input: process.stdin,
+      crlfDelay: Infinity,
+    });
+
+    this.stdinReader.on("line", (line) => {
+      const message = line.trim();
+      if (!message) {
+        return;
+      }
+      void this.handleMessage(this.stdioConnection, message);
+    });
+
+    this.stdinReader.on("error", (error) => {
+      logger.error("stdio transport error:", error);
+    });
+  }
+
+  private async handleMessage(connection: RpcConnection, message: string) {
     try {
       const request: JsonRpcRequest = JSON.parse(message);
 
       if (request.jsonrpc !== "2.0" || !request.method) {
-        this.sendError(ws, request.id || null, -32600, "Invalid Request");
+        this.sendError(
+          connection,
+          request.id || null,
+          -32600,
+          "Invalid Request",
+        );
         return;
       }
 
@@ -293,13 +439,13 @@ export class McpServer {
       switch (request.method) {
         case "initialize":
           result = { capabilities: {} }; // Basic capabilities for now
-          this.sendResponse(ws, request.id, result);
+          this.sendResponse(connection, request.id, result);
           // Send initialized notification
-          this.sendNotification(ws, "initialized", {});
+          this.sendNotification(connection, "initialized", {});
           break;
         case "roots/list":
           result = { roots: [] }; // No roots for now
-          this.sendResponse(ws, request.id, result);
+          this.sendResponse(connection, request.id, result);
           break;
         case "orchestrate/task": // 新しいメソッド: オーケストレーションタスクの開始
           const userPrompt = request.params.prompt;
@@ -310,9 +456,9 @@ export class McpServer {
             status: "pending",
           });
 
-          this.runOrchestration(taskId, userPrompt, ws) // WebSocketを渡して進捗を通知できるようにする
+          this.runOrchestration(taskId, userPrompt, connection)
             .then((finalResponse) => {
-              this.sendResponse(ws, request.id, {
+              this.sendResponse(connection, request.id, {
                 response: finalResponse,
                 taskId: taskId,
               });
@@ -323,13 +469,13 @@ export class McpServer {
                 error instanceof Error ? error.message : String(error);
               logger.error(`Orchestration failed for task ${taskId}:`, error);
               this.sendError(
-                ws,
+                connection,
                 request.id,
                 -32000,
                 `Orchestration failed: ${errorMessage}`,
               );
               this.tasks.get(taskId)!.status = "failed";
-              this.sendNotification(ws, "task_status_update", {
+              this.sendNotification(connection, "task_status_update", {
                 taskId,
                 status: "failed",
                 message: `Orchestration failed: ${errorMessage}`,
@@ -338,7 +484,7 @@ export class McpServer {
           break;
         default:
           this.sendError(
-            ws,
+            connection,
             request.id,
             -32601,
             `Method not found: ${request.method}`,
@@ -347,18 +493,18 @@ export class McpServer {
       }
     } catch (error) {
       logger.error("Error parsing message or handling request:", error);
-      this.sendError(ws, null, -32700, "Parse error");
+      this.sendError(connection, null, -32700, "Parse error");
     }
   }
 
   private async runOrchestration(
     taskId: string,
     userPrompt: string,
-    ws: WebSocket,
+    connection: RpcConnection,
   ): Promise<string> {
     const task = this.tasks.get(taskId)!;
     task.status = "orchestrating";
-    this.sendNotification(ws, "task_status_update", {
+    this.sendNotification(connection, "task_status_update", {
       taskId,
       status: task.status,
       message:
@@ -369,9 +515,9 @@ export class McpServer {
     const roleGraph = new RunRoleGraphUseCase(
       dispatchTask,
       (role, prompt, signal) =>
-        this.executeRole(role, prompt, taskId, ws, signal),
+        this.executeRole(role, prompt, taskId, connection, signal),
       async (event) => {
-        this.sendRoleDelegationNotification(ws, taskId, event);
+        this.sendRoleDelegationNotification(connection, taskId, event);
         try {
           await this.writeRoleDelegationLog(taskId, event);
         } catch (error: any) {
@@ -381,7 +527,7 @@ export class McpServer {
             `Role delegation audit log write failed for task ${taskId}:`,
             message,
           );
-          this.sendNotification(ws, "task_status_update", {
+          this.sendNotification(connection, "task_status_update", {
             taskId,
             status: event.status,
             message: `Audit log write failed: ${message}`,
@@ -401,7 +547,7 @@ export class McpServer {
     task.roleComposition = result.tasks.map((roleTask) => roleTask.role);
     task.delegationEvents = result.events;
     task.finalResponse = result.finalResponse;
-    this.sendNotification(ws, "task_status_update", {
+    this.sendNotification(connection, "task_status_update", {
       taskId,
       status: task.status,
       message: `Role execution completed: ${task.roleComposition.join(" -> ")}`,
@@ -414,7 +560,7 @@ export class McpServer {
     role: RoleName,
     prompt: string,
     taskId: string,
-    ws: WebSocket,
+    connection: RpcConnection,
     signal?: AbortSignal,
   ): Promise<string> {
     const client =
@@ -445,7 +591,7 @@ export class McpServer {
     }
     const toolName = toolCallMatch[1].trim();
     const toolArgs = toolCallMatch[2].trim();
-    this.sendNotification(ws, "task_status_update", {
+    this.sendNotification(connection, "task_status_update", {
       taskId,
       status: "working",
       message: `Role ${role} requested tool: ${toolName}(${toolArgs})`,
@@ -473,7 +619,7 @@ export class McpServer {
   }
 
   private sendRoleDelegationNotification(
-    ws: WebSocket,
+    connection: RpcConnection,
     taskId: string,
     event: RoleDelegationEvent,
   ) {
@@ -489,7 +635,7 @@ export class McpServer {
       event.status === "failed"
         ? `Delegated to ${event.delegated_role} failed: ${event.failure_reason ?? "unknown error"}`
         : `Delegated to ${event.delegated_role} completed`;
-    this.sendNotification(ws, "task_status_update", {
+    this.sendNotification(connection, "task_status_update", {
       taskId,
       parentTaskId: event.parent_task_id,
       childTaskId: event.task_id,
@@ -528,13 +674,17 @@ export class McpServer {
     });
   }
 
-  private sendResponse(ws: WebSocket, id: string | number, result: any) {
+  private sendResponse(
+    connection: RpcConnection,
+    id: string | number,
+    result: any,
+  ) {
     const response: JsonRpcResponse = { jsonrpc: "2.0", id, result };
-    ws.send(JSON.stringify(response));
+    connection.send(JSON.stringify(response));
   }
 
   private sendError(
-    ws: WebSocket,
+    connection: RpcConnection,
     id: string | number | null,
     code: number,
     message: string,
@@ -545,15 +695,20 @@ export class McpServer {
       id,
       error: { code, message, data },
     };
-    ws.send(JSON.stringify(response));
+    connection.send(JSON.stringify(response));
   }
 
-  private sendNotification(ws: WebSocket, method: string, params: any) {
+  private sendNotification(
+    connection: RpcConnection,
+    method: string,
+    params: any,
+  ) {
     const notification = { jsonrpc: "2.0", method, params };
-    ws.send(JSON.stringify(notification));
+    connection.send(JSON.stringify(notification));
   }
 
   public close() {
-    this.wss.close();
+    this.stdinReader?.close();
+    this.stdinReader = null;
   }
 }
