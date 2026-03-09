@@ -28,6 +28,7 @@ local.*.md
 .git_commit_message.txt
 temp_commit_message.txt
 .serena/
+checkpoint/
 
 !jest.config.js
 
